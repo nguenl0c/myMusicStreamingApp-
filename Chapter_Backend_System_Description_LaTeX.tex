@@ -1,0 +1,435 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[vietnamese]{babel}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{graphicx}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{array}
+\usepackage{longtable}
+
+\geometry{
+    top=2.5cm,
+    bottom=2.5cm,
+    left=3cm,
+    right=2cm
+}
+
+\lstset{
+    basicstyle=\ttfamily\footnotesize,
+    backgroundcolor=\color{gray!10},
+    frame=single,
+    breaklines=true,
+    captionpos=b,
+    numbers=left,
+    numberstyle=\tiny,
+    keywordstyle=\color{blue}\bfseries,
+    commentstyle=\color{green},
+    stringstyle=\color{red}
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{CHƯƠNG IV: MÔ TẢ CHI TIẾT HỆ THỐNG BACKEND}
+\fancyhead[R]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\title{\textbf{CHƯƠNG IV: MÔ TẢ CHI TIẾT HỆ THỐNG BACKEND}}
+\author{Music Streaming Application}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Chương này tập trung phân tích và mô tả chi tiết kiến trúc và hoạt động của hệ thống backend trong dự án Music Streaming. Backend đóng vai trò trung tâm trong việc xử lý logic nghiệp vụ, quản lý xác thực người dùng, tương tác với các dịch vụ bên ngoài như Spotify API, và đặc biệt là điều phối quá trình tách nguồn âm nhạc sử dụng mô hình AI Demucs.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Tổng Quan Kiến Trúc Backend}
+\label{sec:backend-overview}
+
+Hệ thống backend được xây dựng dựa trên Node.js và framework Express.js, lựa chọn này mang lại một môi trường phát triển đồng nhất với frontend (React.js) và tận dụng được ưu thế xử lý bất đồng bộ của Node.js cho các tác vụ I/O và mạng.
+
+Kiến trúc tổng thể của backend bao gồm các module chính sau:
+
+\begin{itemize}
+    \item \textbf{Module Xác thực (Authentication Module)}: Xử lý toàn bộ quy trình OAuth 2.0 với Spotify API, bao gồm việc đăng nhập, trao đổi token, làm mới token và kiểm tra thông tin tài khoản người dùng.
+    \item \textbf{Module API Demucs (Demucs API Module)}: Quản lý việc tiếp nhận file âm thanh từ người dùng, khởi chạy và theo dõi tiến trình con Python thực thi mô hình Demucs, xử lý kết quả stems trả về, và cung cấp các API cho client để tương tác với tính năng tách nhạc.
+    \item \textbf{Module Phục vụ File Tĩnh (Static File Serving Module)}: Sử dụng \texttt{express.static} để cung cấp các file audio đã được xử lý (stems, có thể cả các file mixed) cho client.
+    \item \textbf{Hệ thống File (File System)}: Backend tương tác trực tiếp với file system của server để lưu trữ file audio gốc do người dùng tải lên (\texttt{server/uploads/}), các stems đã được tách bởi Demucs (\texttt{server/output/\{trackId\}/}), và dự kiến cho các file audio đã được mix lại.
+\end{itemize}
+
+\subsection{Sơ đồ Kiến trúc Backend}
+\label{subsec:architecture-diagram}
+
+\begin{figure}[h]
+\centering
+\begin{lstlisting}[language=bash, caption=Sơ đồ kiến trúc backend (Mermaid syntax)]
+graph TD
+    subgraph "User Domain"
+        A[React Client (Frontend)]
+    end
+
+    subgraph "Application Server Domain (Node.js Backend)"
+        B[Express.js Application]
+        B_Auth["Spotify Auth Module (/auth)"]
+        B_DemucsAPI["Demucs API Module (/api)"]
+        B_Static["Static File Server (/output, /mixer)"]
+        FStore[File System (server/uploads, server/output)]
+
+        B --> B_Auth
+        B --> B_DemucsAPI
+        B --> B_Static
+        B_DemucsAPI ----> FStore
+        B_Static ----> FStore
+    end
+
+    subgraph "AI Processing Domain (Local Subprocess)"
+        C[Python Demucs (Child Process)]
+    end
+    
+    subgraph "External Services"
+        D[Spotify Web API]
+    end
+
+    A -- "HTTP Requests" --> B
+    B_Auth -- "OAuth 2.0" --> D
+    B_DemucsAPI -- "spawn()" --> C
+    C -- "File I/O" --> FStore
+\end{lstlisting}
+\caption{Kiến trúc tổng thể của hệ thống backend}
+\label{fig:backend-architecture}
+\end{figure}
+
+\section{Công Nghệ và Thư Viện Sử Dụng}
+\label{sec:technologies}
+
+\subsection{Nền tảng và Framework Chính}
+\label{subsec:main-platform}
+
+\begin{description}
+    \item[\textbf{Node.js}] Môi trường thực thi JavaScript phía server, cho phép xây dựng các ứng dụng mạng hiệu suất cao với mô hình I/O không chặn (non-blocking I/O). Phiên bản hỗ trợ ES Modules được ưu tiên.
+    
+    \item[\textbf{Express.js}] Một micro-framework phổ biến và linh hoạt cho Node.js, cung cấp các tính năng cơ bản để xây dựng ứng dụng web và API, nổi bật với kiến trúc middleware.
+\end{description}
+
+\subsection{Các Thư Viện Hỗ Trợ Quan Trọng}
+\label{subsec:supporting-libraries}
+
+\begin{longtable}{|p{3cm}|p{12cm}|}
+\hline
+\textbf{Thư viện} & \textbf{Mô tả} \\
+\hline
+\endhead
+
+\texttt{cors} & Middleware cho phép Cross-Origin Resource Sharing, cần thiết để frontend (chạy trên một port khác) có thể gửi yêu cầu đến backend. Được cấu hình để chỉ chấp nhận request từ origin của frontend. \\
+\hline
+
+\texttt{dotenv} & Giúp quản lý các biến môi trường một cách an toàn và tiện lợi, tách biệt cấu hình nhạy cảm (như API keys) ra khỏi mã nguồn. File \texttt{.env} chứa các biến như \texttt{SPOTIFY\_CLIENT\_ID}, \texttt{SPOTIFY\_CLIENT\_SECRET}, \texttt{REDIRECT\_URI}. \\
+\hline
+
+\texttt{axios} & HTTP client dựa trên Promise, được sử dụng phía server để thực hiện các yêu cầu đến Spotify API (ví dụ: trao đổi token, lấy thông tin người dùng). \\
+\hline
+
+\texttt{multer} & Middleware chuyên xử lý \texttt{multipart/form-data}, được sử dụng để quản lý việc tải file âm thanh từ client lên server. File được lưu vào thư mục tạm (\texttt{server/uploads/}) trước khi được xử lý. \\
+\hline
+
+\texttt{uuid} & Thư viện để tạo ra các định danh duy nhất toàn cục (Universally Unique Identifiers), được sử dụng để tạo \texttt{trackId} cho mỗi file audio được upload, đảm bảo không có sự trùng lặp khi đặt tên file và thư mục. \\
+\hline
+
+\texttt{querystring} & Module tích hợp sẵn của Node.js, hữu ích cho việc parse và stringify các URL query strings, thường dùng khi tương tác với các API theo chuẩn OAuth 2.0 như Spotify. \\
+\hline
+
+\texttt{child\_process} & Module tích hợp sẵn của Node.js, cung cấp khả năng tạo và quản lý các tiến trình con. Trong dự án này, \texttt{spawn()} từ module này được sử dụng để thực thi script Python của Demucs. \\
+\hline
+\end{longtable}
+
+\section{Module Xác Thực Với Spotify}
+\label{sec:spotify-auth}
+
+Module này chịu trách nhiệm cho toàn bộ luồng tương tác với Spotify API liên quan đến xác thực và ủy quyền người dùng (được triển khai trong \texttt{server/index.js}).
+
+\subsection{Luồng OAuth 2.0 Authorization Code Flow}
+\label{subsec:oauth-flow}
+
+\begin{enumerate}
+    \item \textbf{Yêu cầu Ủy quyền (\texttt{GET /auth/login})}:
+        \begin{itemize}
+            \item Client (frontend) điều hướng người dùng đến endpoint này.
+            \item Backend tạo một \texttt{state} ngẫu nhiên (để chống CSRF) và redirect người dùng đến trang \texttt{/authorize} của Spotify.
+            \item Các \texttt{scope} cần thiết (ví dụ: \texttt{streaming}, \texttt{user-read-playback-state}, \texttt{user-library-read}, etc.) được yêu cầu để ứng dụng có thể truy cập các tài nguyên và tính năng tương ứng của Spotify.
+        \end{itemize}
+    
+    \item \textbf{Trao đổi Token (\texttt{POST /auth/token})}:
+        \begin{itemize}
+            \item Sau khi người dùng đồng ý ủy quyền trên Spotify, Spotify sẽ redirect người dùng trở lại \texttt{REDIRECT\_URI} đã đăng ký, kèm theo một \texttt{authorization\_code} và \texttt{state}.
+            \item Client gửi \texttt{authorization\_code} này đến endpoint \texttt{/auth/token} của backend.
+            \item Backend thực hiện một POST request đến \texttt{https://accounts.spotify.com/api/token} của Spotify, gửi kèm \texttt{code}, \texttt{redirect\_uri}, \texttt{grant\_type='authorization\_code'}, và \texttt{Authorization} header (chứa \texttt{client\_id} và \texttt{client\_secret} đã được base64 encode).
+            \item Nếu thành công, Spotify trả về \texttt{access\_token}, \texttt{refresh\_token}, và \texttt{expires\_in}. Backend trả JSON này về cho client.
+        \end{itemize}
+        
+    \item \textbf{Làm mới Token (\texttt{POST /auth/refresh\_token})}:
+        \begin{itemize}
+            \item Khi \texttt{access\_token} hết hạn, client gửi \texttt{refresh\_token} đến endpoint này.
+            \item Backend gửi một POST request đến \texttt{https://accounts.spotify.com/api/token} với \texttt{grant\_type='refresh\_token'} và \texttt{refresh\_token}.
+            \item Spotify trả về một \texttt{access\_token} mới (có thể kèm hoặc không kèm \texttt{refresh\_token} mới). Backend trả JSON này về cho client.
+        \end{itemize}
+\end{enumerate}
+
+\subsection{Kiểm Tra Thông Tin Người Dùng}
+\label{subsec:user-info-check}
+
+Endpoint \texttt{GET /auth/check-premium} thực hiện các chức năng sau:
+\begin{itemize}
+    \item Yêu cầu client gửi \texttt{access\_token} (nhận được từ Spotify) trong \texttt{Authorization: Bearer <token>} header.
+    \item Backend sử dụng token này để gọi API \texttt{https://api.spotify.com/v1/me} của Spotify.
+    \item Kết quả trả về chứa thông tin người dùng, bao gồm \texttt{product} (ví dụ: "premium", "free"), \texttt{id}, \texttt{display\_name}, \texttt{email}, và \texttt{images}.
+    \item Backend trả về cho client một JSON chứa \texttt{isPremium: Boolean} và thông tin \texttt{user}.
+\end{itemize}
+
+\section{Module Tích Hợp Demucs và Xử Lý Âm Thanh}
+\label{sec:demucs-module}
+
+Đây là module cốt lõi cho tính năng tách nhạc AI, được mount tại prefix \texttt{/api} trong file \texttt{server/demucs-api.js}.
+
+\subsection{Quản Lý File Upload}
+\label{subsec:file-upload}
+
+\textbf{Endpoint \texttt{POST /api/upload}}:
+\begin{itemize}
+    \item Sử dụng \texttt{multer} để nhận file audio (field tên \texttt{audio} trong \texttt{multipart/form-data}).
+    \item Nếu không có file, trả lỗi 400.
+    \item File gốc được lưu tạm bởi Multer, sau đó được đổi tên sử dụng một \texttt{trackId} (UUID) mới và phần mở rộng gốc, rồi lưu vào \texttt{server/uploads/\{trackId\}.\{ext\}}.
+    \item Một thư mục output \texttt{server/output/\{trackId\}} cũng được tạo ra để chứa các stems sau này.
+    \item Thông tin về track (ID, tên gốc, đường dẫn file, thư mục output) được lưu vào một biến cục bộ trên server là \texttt{uploadedTracks[trackId]}.
+    \item Trả về \texttt{\{ message, trackId, originalName \}} cho client.
+\end{itemize}
+
+\subsection{Khởi Chạy Tiến Trình Demucs}
+\label{subsec:demucs-process}
+
+\textbf{Endpoint \texttt{POST /api/start-demucs}}:
+\begin{enumerate}
+    \item Yêu cầu \texttt{trackId} trong request body.
+    \item Kiểm tra \texttt{trackId} có hợp lệ và track có tồn tại trong \texttt{uploadedTracks} không.
+    \item Xác định lệnh Python để chạy (\texttt{python} hoặc \texttt{python3} tùy theo \texttt{process.platform}).
+    \item Chuẩn bị các tham số cho Demucs:
+        \begin{itemize}
+            \item \texttt{-m demucs.separate}: Chạy Demucs như một module Python.
+            \item \texttt{-n \{model\}}: Model sử dụng (ví dụ: \texttt{htdemucs}).
+            \item \texttt{--mp3}: Chỉ định output là file MP3.
+            \item \texttt{-o \{outputDir\}}: Đường dẫn đến thư mục \texttt{server/output/\{trackId\}}.
+            \item \texttt{\{filePath\}}: Đường dẫn đến file audio gốc trong \texttt{server/uploads/\{trackId\}.\{ext\}}.
+        \end{itemize}
+    \item Sử dụng \texttt{spawn()} từ \texttt{child\_process} để chạy lệnh Demucs với các tham số trên. Tiến trình này chạy bất đồng bộ.
+        \begin{itemize}
+            \item \texttt{windowsHide: true}: Ẩn cửa sổ console trên Windows.
+            \item \texttt{env: process.env}: Truyền các biến môi trường hiện tại.
+        \end{itemize}
+    \item Khởi tạo \texttt{demucsProgress[trackId] = \{ log: "", percent: 0, done: false, error: null \}}.
+    \item Trả về response \texttt{\{ message: "Bắt đầu tách nhạc", trackId \}} ngay lập tức cho client.
+\end{enumerate}
+
+\subsection{Theo Dõi Tiến Trình Demucs}
+\label{subsec:demucs-monitoring}
+
+\subsubsection{Sự kiện từ Child Process}
+\begin{itemize}
+    \item \texttt{child.stdout.on('data', callback)}: Lắng nghe output chuẩn từ Demucs. Dữ liệu được nối vào \texttt{demucsProgress[trackId].log}. Cố gắng parse phần trăm hoàn thành từ output (ví dụ: tìm pattern \texttt{XX\%} hoặc \texttt{Progress: XX}).
+    
+    \item \texttt{child.stderr.on('data', callback)}: Lắng nghe output lỗi từ Demucs. Dữ liệu cũng được nối vào log và parse phần trăm (vì đôi khi Demucs ghi tiến trình ra stderr).
+    
+    \item \texttt{child.on('error', callback)}: Bắt lỗi nếu không thể spawn được tiến trình (ví dụ: không tìm thấy lệnh \texttt{python}). Cập nhật \texttt{demucsProgress} với thông tin lỗi.
+    
+    \item \texttt{child.on('close', (code) => callback)}: Xử lý khi tiến trình Demucs kết thúc.
+        \begin{itemize}
+            \item \texttt{demucsProgress[trackId].done = true}.
+            \item Nếu \texttt{code !== 0}, có lỗi xảy ra, cập nhật \texttt{demucsProgress[trackId].error}.
+            \item Nếu \texttt{code === 0} (thành công):
+                \begin{itemize}
+                    \item Demucs thường tạo output trong một thư mục con có tên là model (ví dụ: \texttt{server/output/\{trackId\}/htdemucs/}).
+                    \item Backend sẽ di chuyển các file stems (ví dụ: \texttt{vocals.mp3}, \texttt{drums.mp3}) từ thư mục con này lên thư mục \texttt{server/output/\{trackId\}/}.
+                    \item Sau đó, xóa thư mục con của model.
+                \end{itemize}
+        \end{itemize}
+\end{itemize}
+
+\subsubsection{API Progress Tracking}
+\textbf{Endpoint \texttt{GET /api/demucs-progress/:trackId}}:
+\begin{itemize}
+    \item Client gọi API này để lấy trạng thái hiện tại của quá trình tách nhạc.
+    \item Backend trả về đối tượng \texttt{demucsProgress[trackId]} (hoặc một đối tượng mặc định nếu chưa có thông tin).
+\end{itemize}
+
+\subsection{Truy Xuất và Quản Lý Stems}
+\label{subsec:stems-management}
+
+\begin{description}
+    \item[\texttt{GET /api/stems}] Đọc nội dung thư mục \texttt{server/output/}. Với mỗi thư mục con (tương ứng một \texttt{trackId}), đọc các file stems (\texttt{vocals.mp3}, \texttt{drums.mp3}, \texttt{bass.mp3}, \texttt{other.mp3}). Trả về một mảng các đối tượng, mỗi đối tượng chứa \texttt{trackId}, \texttt{originalName} (lấy từ \texttt{uploadedTracks} hoặc tên file gốc), và một object \texttt{stems} chứa URL, kích thước, ngày sửa đổi cho từng stem.
+    
+    \item[\texttt{GET /api/stems/:trackId}] Tương tự như trên nhưng chỉ cho một \texttt{trackId} cụ thể.
+    
+    \item[Phục vụ file stem tĩnh] Các URL của stem (ví dụ: \texttt{/output/\{trackId\}/vocals.mp3}) được phục vụ thông qua \texttt{express.static(path.join(\_\_dirname, 'server', 'output'))}.
+    
+    \item[\texttt{DELETE /api/delete-track/:trackId}] Xóa file gốc trong \texttt{server/uploads/\{trackId\}.\{ext\}}. Xóa toàn bộ thư mục \texttt{server/output/\{trackId\}} và nội dung bên trong. Xóa entry khỏi \texttt{uploadedTracks[trackId]} và \texttt{demucsProgress[trackId]}. Trả về thông báo thành công hoặc lỗi.
+\end{description}
+
+\section{Cấu Trúc File System Phía Backend}
+\label{sec:file-structure}
+
+\begin{lstlisting}[language=bash, caption=Cấu trúc thư mục backend]
+/prj-music-streaming
+  └── /server/
+      ├── .env                     # Biến môi trường - KHÔNG COMMIT
+      ├── index.js                 # Entry point, Spotify Auth routes
+      ├── demucs-api.js           # Router cho API Demucs và file
+      ├── /uploads/               # File audio gốc từ người dùng
+      │   ├── {trackId}.mp3
+      │   ├── {trackId}.wav
+      │   └── ...
+      ├── /output/                # Stems đã được tách bởi Demucs
+      │   └── /{trackId}/         # Mỗi trackId có thư mục riêng
+      │       ├── vocals.mp3
+      │       ├── drums.mp3
+      │       ├── bass.mp3
+      │       └── other.mp3
+      ├── /mixer/                 # (Dự kiến) File audio đã mix
+      │   └── {mixId}.mp3
+      ├── node_modules/           # Dependencies
+      └── package.json            # Package configuration
+\end{lstlisting}
+
+\begin{quote}
+\textbf{Lưu ý quan trọng}: Việc lưu trữ trạng thái (\texttt{uploadedTracks}, \texttt{demucsProgress}) trong biến cục bộ của server Node.js có nghĩa là dữ liệu này sẽ bị mất mỗi khi server khởi động lại. Đối với một ứng dụng production, cần một giải pháp lưu trữ bền vững hơn (ví dụ: database hoặc Redis).
+\end{quote}
+
+\section{Các Khía Cạnh Vận Hành}
+\label{sec:operational-aspects}
+
+\subsection{Bảo Mật (Security Considerations)}
+\label{subsec:security}
+
+\begin{description}
+    \item[\textbf{Xác thực Spotify OAuth 2.0}] Đảm bảo an toàn trong việc ủy quyền truy cập tài nguyên Spotify. Sử dụng \texttt{state} parameter để chống CSRF (cần đảm bảo \texttt{state} được validate khi Spotify redirect về).
+    
+    \item[\textbf{Quản lý Credentials}] \texttt{SPOTIFY\_CLIENT\_ID} và \texttt{SPOTIFY\_CLIENT\_SECRET} được lưu trong biến môi trường (\texttt{.env}) và không hardcode trong mã nguồn.
+    
+    \item[\textbf{Bảo mật API Backend}] Các API của Demucs (\texttt{/api/*}) hiện tại chưa có cơ chế bảo vệ riêng (ví dụ: JWT của ứng dụng). Bất kỳ ai biết endpoint đều có thể gọi. Đây là một điểm cần cải thiện cho môi trường production.
+    
+    \item[\textbf{An toàn File Upload}] \texttt{multer} có thể được cấu hình để giới hạn kích thước file và loại file được chấp nhận. Sử dụng UUID làm tên file/thư mục trên server thay vì tên file gốc từ người dùng giúp tránh các vấn đề liên quan đến ký tự đặc biệt hoặc path traversal.
+    
+    \item[\textbf{CORS}] Cấu hình \texttt{cors} để chỉ cho phép request từ các origin đã biết (frontend).
+    
+    \item[\textbf{Rate Limiting}] Chưa được triển khai. Cần thiết cho các API tốn tài nguyên (\texttt{/api/start-demucs}, \texttt{/api/upload}) để chống lạm dụng và DoS.
+\end{description}
+
+\subsection{Khả Năng Mở Rộng (Scalability Considerations)}
+\label{subsec:scalability}
+
+\subsubsection{Vertical Scaling}
+Node.js có thể tận dụng tài nguyên (CPU, RAM) của một server đơn lẻ. Việc tách nhạc bằng Demucs là tác vụ nặng, nên nâng cấp server (CPU, RAM, và đặc biệt là GPU nếu Demucs được cấu hình để sử dụng) sẽ cải thiện hiệu năng.
+
+\subsubsection{Horizontal Scaling Challenges}
+\begin{itemize}
+    \item \textbf{Stateful In-memory Storage}: Như đã đề cập, \texttt{uploadedTracks} và \texttt{demucsProgress} lưu trong bộ nhớ làm backend stateful. Cần giải pháp lưu trữ ngoài (Redis, database) để hỗ trợ đa instance.
+    \item \textbf{File System Dependency}: Cần giải pháp lưu trữ file chia sẻ hoặc cloud storage.
+\end{itemize}
+
+\subsubsection{Bottlenecks Chính}
+\begin{itemize}
+    \item \textbf{AI Processing (Demucs)}: Tiêu tốn nhiều thời gian và tài nguyên nhất.
+    \item \textbf{Concurrent Demucs Processes}: Chạy quá nhiều tiến trình Demucs đồng thời sẽ làm cạn kiệt tài nguyên server.
+\end{itemize}
+
+\subsubsection{Giải Pháp Tiềm Năng}
+\begin{itemize}
+    \item \textbf{Job Queue System (ví dụ: RabbitMQ, BullMQ)}: Đưa các yêu cầu tách nhạc vào một hàng đợi. Các worker process sẽ lấy job từ queue để xử lý, giúp kiểm soát tải và độ ưu tiên.
+    \item \textbf{Dedicated AI Processing Nodes/Services}: Tách phần xử lý AI ra thành các service riêng biệt có thể scale độc lập và tối ưu hóa (ví dụ: sử dụng server có GPU).
+\end{itemize}
+
+\subsection{Giám Sát và Ghi Log (Monitoring and Logging)}
+\label{subsec:monitoring}
+
+\subsubsection{Hiện Trạng}
+Chủ yếu sử dụng \texttt{console.log()} và \texttt{console.error()} để ghi log các sự kiện và lỗi. Phù hợp cho development nhưng không đủ cho production.
+
+\subsubsection{Cải Thiện cho Production}
+\begin{itemize}
+    \item \textbf{Structured Logging (ví dụ: Winston, Pino)}: Tạo log có cấu trúc (JSON), với các level (info, warn, error), timestamp.
+    \item \textbf{Log Aggregation (ví dụ: ELK Stack, Grafana Loki)}: Tập trung log từ nhiều nguồn để dễ dàng tìm kiếm, phân tích, và tạo cảnh báo.
+    \item \textbf{API Endpoint Monitoring}: Theo dõi số lượng request, thời gian phản hồi, tỷ lệ lỗi của các API.
+    \item \textbf{Resource Monitoring}: Theo dõi CPU, RAM, Disk I/O của server, đặc biệt khi Demucs đang chạy.
+    \item \textbf{Error Tracking (ví dụ: Sentry, Bugsnag)}: Tích hợp dịch vụ theo dõi lỗi để nhận thông báo ngay khi có lỗi nghiêm trọng.
+\end{itemize}
+
+\section{API Endpoints Chi Tiết Của Backend}
+\label{sec:api-endpoints}
+
+\subsection{Authentication Endpoints (Prefix: \texttt{/auth})}
+\label{subsec:auth-endpoints}
+
+\begin{longtable}{|p{4cm}|p{11cm}|}
+\hline
+\textbf{Endpoint} & \textbf{Mô tả} \\
+\hline
+\endhead
+
+\texttt{GET /login} & Chuyển hướng người dùng đến trang đăng nhập của Spotify. \textbf{Response}: Redirect đến Spotify. \\
+\hline
+
+\texttt{POST /token} & Trao đổi \texttt{authorization\_code} lấy \texttt{access\_token} và \texttt{refresh\_token}. \textbf{Request Body}: \texttt{\{ code: "spotify\_auth\_code" \}}. \textbf{Response}: Spotify token object. \\
+\hline
+
+\texttt{POST /refresh\_token} & Làm mới \texttt{access\_token}. \textbf{Request Body}: \texttt{\{ refresh\_token: "spotify\_refresh\_token" \}}. \textbf{Response}: Spotify token object. \\
+\hline
+
+\texttt{GET /check-premium} & Kiểm tra trạng thái tài khoản người dùng. \textbf{Headers}: \texttt{Authorization: Bearer <spotify\_access\_token>}. \textbf{Response}: \texttt{\{ isPremium: Boolean, user: Object \}}. \\
+\hline
+\end{longtable}
+
+\subsection{Demucs \& File Processing Endpoints (Prefix: \texttt{/api})}
+\label{subsec:demucs-endpoints}
+
+\begin{longtable}{|p{4cm}|p{11cm}|}
+\hline
+\textbf{Endpoint} & \textbf{Mô tả} \\
+\hline
+\endhead
+
+\texttt{POST /upload} & Tải lên file âm thanh. \textbf{Request}: \texttt{multipart/form-data} (field \texttt{audio}). \textbf{Response}: \texttt{\{ message, trackId, originalName \}}. \\
+\hline
+
+\texttt{POST /start-demucs} & Bắt đầu quá trình tách nhạc Demucs. \textbf{Request Body}: \texttt{\{ trackId: string \}}. \textbf{Response}: \texttt{\{ message, trackId \}} (Asynchronous). \\
+\hline
+
+\texttt{GET /demucs-progress/:trackId} & Lấy tiến trình tách nhạc. \textbf{URL Params}: \texttt{trackId}. \textbf{Response}: \texttt{\{ percent, log, done, error \}}. \\
+\hline
+
+\texttt{GET /stems} & Lấy danh sách tất cả các track đã tách và thông tin stems. \textbf{Response}: Array of track objects with stems info. \\
+\hline
+
+\texttt{GET /stems/:trackId} & Lấy thông tin stems của một track cụ thể. \textbf{URL Params}: \texttt{trackId}. \textbf{Response}: Track object with stems info. \\
+\hline
+
+\texttt{GET /output/:trackId/:stemName.mp3} & Tải file stem (phục vụ tĩnh). \textbf{Response}: Audio file stream. \\
+\hline
+
+\texttt{DELETE /delete-track/:trackId} & Xóa track và các stems liên quan. \textbf{URL Params}: \texttt{trackId}. \textbf{Response}: \texttt{\{ message \}}. \\
+\hline
+\end{longtable}
+
+\section{Kết Luận}
+\label{sec:conclusion}
+
+Chương này đã cung cấp một cái nhìn chi tiết về hệ thống backend, từ kiến trúc, công nghệ, các module chính, đến các vấn đề vận hành. Các phân tích này là nền tảng để hiểu rõ hơn về cách ứng dụng hoạt động và các hướng phát triển, cải thiện tiềm năng trong tương lai.
+
+Hệ thống backend hiện tại đã thể hiện được tính khả thi và hiệu quả trong việc tích hợp các công nghệ khác nhau (Node.js, Spotify API, Demucs AI) để tạo ra một ứng dụng streaming nhạc với tính năng tách nhạc độc đáo. Tuy nhiên, để phát triển thành một sản phẩm production-ready, cần có thêm các cải thiện về bảo mật, khả năng mở rộng, và giám sát hệ thống.
+
+\end{document}
