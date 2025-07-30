@@ -1,7 +1,8 @@
-/** @type {import('tailwindcss').Config} */
+
+import tailwindcss from '@tailwindcss/vite';
+
 export default {
-  content: ["./src/**/*.{js,jsx,ts,tsx}",
-            "./index.html"],
+  content: ["./src/**/*.{js,jsx,ts,tsx}", "./index.html"],
   theme: {
     extend: {
       fontFamily: {
@@ -13,6 +14,8 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    tailwindcss(),
+  ],
 }
 

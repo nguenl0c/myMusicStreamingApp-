@@ -18,7 +18,7 @@ const app = express();
 const port = 5000;
 
 app.use(cors({
-    origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'], // Bao gồm các port có thể dùng
+    origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176', 'http://localhost:5177'], // Bao gồm các port có thể dùng
     methods: ['GET', 'POST'],
     credentials: true
   }));

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import UnifiedPlayer from '../components/audioPlayer/unifiedPlayer.jsx';
-import unifiedPlaylistManager from '../services/unifiedPlaylistManager';
+import unifiedPlaylistManager from '../services/unifiedPlaylistManager.js';
 import {
   DndContext,
   closestCenter,

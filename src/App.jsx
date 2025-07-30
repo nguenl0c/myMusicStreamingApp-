@@ -1,7 +1,6 @@
-import React from "react";
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import Home from "./screens/home";
-import Callback from "./screens/auth/callBack";
+import Home from "./pages/home";
+import Callback from "./pages/auth/callBack";
 import ErrorBoundary from "./components/ErrorBoundary";
 
 export default function App() {

@@ -1,6 +1,6 @@
 import React from 'react'
 import { useState, useEffect } from 'react';
-import { getAccessToken, setClientToken, isTokenExpired, refreshToken, clearAllTokens } from "../spotify";
+import { getAccessToken, setClientToken, isTokenExpired, refreshToken, clearAllTokens } from "../spotify.js";
 import { Routes, Route, useNavigate } from "react-router-dom";
 import axios from 'axios';
 import Login from './auth/login.jsx';
