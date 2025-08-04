@@ -18,7 +18,7 @@ const app = express();
 const port = 5000;
 
 app.use(cors({
-    origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:5176', 'http://localhost:5177'], // Bao gồm các port có thể dùng
+    origin: [ 'http://localhost:5180'], // Bao gồm các port có thể dùng
     methods: ['GET', 'POST'],
     credentials: true
   }));
@@ -198,7 +198,11 @@ app.get('/auth/check-premium', async (req, res) => {
   }
 });
 
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Server running at http://localhost:${port}`);
   console.log(`Ensure Spotify app is registered with redirect URI: ${process.env.REDIRECT_URI}`);
 });
+
+// Keep the server running
+server.keepAliveTimeout = 0;
+server.timeout = 0;

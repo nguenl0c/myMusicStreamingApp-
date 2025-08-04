@@ -86,14 +86,18 @@ export default function Home() {
   
   useEffect(() => {
     const checkAndSetupToken = async () => {
+      console.log('=== HOME TOKEN CHECK ===');
+      
       // Lấy token từ localStorage thông qua hàm chung
       let currentToken = getAccessToken();
+      console.log('Token from localStorage:', currentToken ? currentToken.substring(0, 20) + '...' : 'null');
       
       // Kiểm tra hash URL cho trường hợp redirect từ implicit grant
       const hash = window.location.hash;
       window.location.hash = "";
       
       if (!currentToken && hash) {
+        console.log('Found token in hash, extracting...');
         const _token = hash.split("&")[0].split("=")[1];
         setClientToken(_token);
         currentToken = _token;
@@ -106,6 +110,7 @@ export default function Home() {
       }
       
       if (currentToken) {
+        console.log('Setting token in state...');
         setToken(currentToken);
         
         // Kiểm tra xem đã có thông tin Premium trong localStorage chưa
@@ -121,6 +126,8 @@ export default function Home() {
           // Nếu chưa có trong cache, kiểm tra API
           await checkPremiumStatus(currentToken);
         }
+      } else {
+        console.log('No valid token found, showing login');
       }
     };
     

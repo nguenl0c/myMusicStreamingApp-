@@ -7,25 +7,48 @@ const Callback = () => {
 
   useEffect(() => {
     const fetchToken = async () => {
+      console.log('=== CALLBACK DEBUG ===');
+      console.log('Current URL:', window.location.href);
+      
       const urlParams = new URLSearchParams(window.location.search);
       const code = urlParams.get('code');
+      const error = urlParams.get('error');
+      
+      console.log('Code from URL:', code ? code.substring(0, 10) + '...' : 'null');
+      console.log('Error from URL:', error);
+      
+      if (error) {
+        console.error('OAuth error:', error);
+        navigate('/');
+        return;
+      }
       
       if (code) {
+        console.log('Processing authorization code...');
         // Xóa code khỏi URL để không dùng lại
         window.history.replaceState({}, document.title, "/callback");
         
         const data = await handleCallback(code);
+        console.log('Callback result:', data ? 'success' : 'failed');
+        
         if (data) {
+          console.log('Token received, saving to storage...');
           // Sử dụng hàm chung để lưu token
           saveTokensToStorage(data);
           
+          // Kiểm tra xem token đã được lưu chưa
           setTimeout(() => {
+            const savedToken = localStorage.getItem('spotify_access_token');
+            console.log('Token saved check:', savedToken ? 'YES' : 'NO');
+            console.log('Navigating to /library...');
             navigate('/library');
           }, 100);
         } else {
+          console.error('Failed to get token, redirecting to home');
           navigate('/');
         }
       } else {
+        console.log('No code in URL, redirecting to home');
         navigate('/');
       }
     };

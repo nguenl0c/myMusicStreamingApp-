@@ -1,10 +1,15 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Noto+Sans:wght@400;500;600;700&display=swap');
-@import url(./shared/globalStyles.css);
 
-/* Font tiếng Việt */
-* {
-    font-family: 'Inter', 'Noto Sans', 'Segoe UI', 'Roboto', 'Arial', 'Helvetica Neue', sans-serif;
+.screen-container {
+    width: 100%;
+    height: 100%;
+    background-color: #1e2a3e;
+    border-bottom-left-radius: 30px;
+    border-top-left-radius: 30px;
+    background-color: #1e2a3e;
+    opacity: 1;
+    background-color: #000000;
+    opacity: 0.9;
+    background-image: linear-gradient(135deg, #85A5D9, #E1E6F0 50%, #96B9D9 100%);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
-
-/* Ẩn toàn bộ player mặc định của react-spotify-web-playback */
