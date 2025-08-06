@@ -154,6 +154,7 @@ export default function AudioPlayer({
     activeDevice,
     isPlaying,
     userPaused,
+    playOnDevice,
   ]);
 
   // Xử lý play/pause khi isPlaying thay đổi
@@ -539,13 +540,13 @@ export default function AudioPlayer({
 }
 
 // Hàm format thời gian
-const formatTime = (time) => {
-  if (!time || isNaN(time)) return "0:00";
+// const formatTime = (time) => {
+//   if (!time || isNaN(time)) return "0:00";
 
-  const minutes = Math.floor(time / 60);
-  const seconds = Math.floor(time % 60);
+//   const minutes = Math.floor(time / 60);
+//   const seconds = Math.floor(time % 60);
 
-  return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-};
+//   return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+// };
 
 

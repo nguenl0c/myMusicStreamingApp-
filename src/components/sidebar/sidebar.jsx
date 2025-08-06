@@ -14,6 +14,8 @@ export default function Sidebar() {
   const [image, setImage] = useState(
     "https://i.pinimg.com/originals/59/28/95/5928959d2219ea674c7f478841a53955.png" // Ảnh mặc định
   );
+  const [userInfo, setUserInfo] = useState(null);
+  const [showTooltip, setShowTooltip] = useState(false);
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
@@ -22,6 +24,13 @@ export default function Sidebar() {
         if (response.data.images && response.data.images.length > 0) {
           setImage(response.data.images[0].url);
         }
+        
+        // Lưu thông tin user để hiển thị trong tooltip
+        setUserInfo({
+          name: response.data.display_name || response.data.id,
+          email: response.data.email,
+          product: response.data.product // "premium" hoặc "free"
+        });
       } catch (error) {
         console.error("Không thể lấy thông tin người dùng:", error);
         // Nếu lỗi 401 (Unauthorized) - có thể token đã hết hạn
@@ -44,11 +53,33 @@ export default function Sidebar() {
 
   return (
     <div className="w-[100px] h-full flex flex-col items-center bg-[#121212]">
-      <img
-        src={image}
-        alt="profile"
-        className="w-[50px] h-[50px] rounded-md mt-5 border-2 border-white"
-      />
+      {/* Avatar với tooltip */}
+      <div 
+        className="relative mt-5"
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+      >
+        <img
+          src={image}
+          alt="profile"
+          className="w-[50px] h-[50px] rounded-md border-2 border-white cursor-pointer hover:border-green-500 transition-colors duration-200"
+        />
+        
+        {/* Tooltip */}
+        {showTooltip && userInfo && (
+          <div className="absolute left-16 top-0 bg-gray-900 text-white p-3 rounded-lg shadow-lg z-50 whitespace-nowrap">
+            <div className="text-sm font-semibold">{userInfo.name}</div>
+            <div className="text-xs text-gray-300">{userInfo.email}</div>
+            <div className={`text-xs font-medium ${
+              userInfo.product === 'premium' ? 'text-yellow-400' : 'text-gray-400'
+            }`}>
+              {userInfo.product === 'premium' ? '👑 Premium' : '🆓 Free'}
+            </div>
+            {/* Mũi tên tooltip */}
+            <div className="absolute left-[-8px] top-4 w-0 h-0 border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-r-[8px] border-r-gray-900"></div>
+          </div>
+        )}
+      </div>
       <div className="flex flex-col h-full justify-center">
         <SidebarButton title="Search" to="/search" icon={<IoSearch />} />
         <SidebarButton

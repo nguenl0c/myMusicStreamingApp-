@@ -1,7 +1,7 @@
 import React from 'react'
 import { useState, useEffect } from 'react';
-import { getAccessToken, setClientToken, isTokenExpired, refreshToken, clearAllTokens } from "../spotify.js";
-import { Routes, Route, useNavigate } from "react-router-dom";
+import { getAccessToken, setClientToken, isTokenExpired, refreshToken } from "../spotify.js";
+import { Routes, Route } from "react-router-dom";
 import axios from 'axios';
 import Login from './auth/login.jsx';
 import Search from './search.jsx';
@@ -18,7 +18,6 @@ export default function Home() {
   const [user, setUser] = useState(null);
   const [checkingPremium, setCheckingPremium] = useState(false);
   const [premiumError, setPremiumError] = useState(null);
-  const navigate = useNavigate();
   
   // Kiểm tra tài khoản Premium
   const checkPremiumStatus = async (token) => {
@@ -60,15 +59,6 @@ export default function Home() {
     } finally {
       setCheckingPremium(false);
     }
-  };
-  
-  // Đăng xuất
-  const handleLogout = () => {
-    clearAllTokens();
-    setToken("");
-    setIsPremium(false);
-    setUser(null);
-    navigate("/");
   };
   
   // Thử lại kết nối
@@ -179,20 +169,6 @@ export default function Home() {
             !isPremium || premiumError ? "pt-10" : ""
           }`}
         >
-          {user && (
-            <div className="absolute top-2 right-4 text-white text-sm flex items-center z-40">
-              <span className="mr-2">
-                {user.name} ({isPremium ? "Premium" : "Free"})
-              </span>
-              <button
-                onClick={handleLogout}
-                className="px-3 py-1 bg-blue-600/80 text-white rounded-full hover:bg-blue-600"
-              >
-                Đăng xuất
-              </button>
-            </div>
-          )}
-
           <Routes>
             <Route path="/search" element={<Search />} />
             <Route
