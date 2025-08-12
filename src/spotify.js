@@ -13,6 +13,8 @@ let isRefreshing = false;
 let refreshPromise = null;
 let failedRequests = [];
 
+export const authScope = 'user-read-private user-read-email user-library-read user-library-modify playlist-read-private playlist-modify-public playlist-modify-private streaming user-read-playback-state user-modify-playback-state';
+
 // Lưu tokens vào localStorage - hàm chính để lưu token
 export const saveTokensToStorage = (data) => {
   if (!data || !data.access_token) return;
@@ -66,69 +68,70 @@ export const clearAllTokens = () => {
 // Làm mới token khi hết hạn
 export const refreshToken = async () => {
   const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-  
+
   if (!refreshToken) {
-    console.error('No refresh token available');
+    console.error("No refresh token available");
     clearAllTokens(); // Xóa hết token không hợp lệ
     return null;
   }
-  
+
   // Nếu đang có quá trình refresh, trả về promise đó
   if (isRefreshing) {
     return refreshPromise;
   }
-  
+
   // Thiết lập quá trình refresh mới
   isRefreshing = true;
-  
-  refreshPromise = new Promise(async (resolve, reject) => {
-    try {
-      console.log('Refreshing Spotify token...');
-      const response = await axios.post(`${BACKEND_URL}/auth/refresh_token`, {
-        refresh_token: refreshToken
-      });
-      
-      const { access_token, expires_in } = response.data;
-      
-      if (!access_token) {
-        throw new Error('No access token in refresh response');
+
+  refreshPromise = new Promise((resolve, reject) => {
+    // SỬA LỖI: Định nghĩa hàm doRefresh để nhận token làm tham số
+    const doRefresh = async (tokenToRefresh) => {
+      try {
+        console.log("Refreshing Spotify token...");
+        const response = await axios.post(`${BACKEND_URL}/auth/refresh_token`, {
+          // Sử dụng tham số được truyền vào
+          refresh_token: tokenToRefresh,
+        });
+
+        const { access_token, expires_in } = response.data;
+        if (!access_token)
+          throw new Error("No access token in refresh response");
+
+        localStorage.setItem(TOKEN_KEY, access_token);
+        const expiresAt = Date.now() + (expires_in - 60) * 1000;
+        localStorage.setItem(EXPIRES_AT_KEY, expiresAt);
+
+        console.log("Token refreshed successfully");
+
+        failedRequests.forEach((req) => req.resolve(access_token));
+        failedRequests = [];
+
+        resolve(access_token);
+      } catch (error) {
+        console.error(
+          "Error refreshing token:",
+          error?.response?.data || error.message
+        );
+        failedRequests.forEach((req) => req.reject(error));
+        failedRequests = [];
+        if (
+          error?.response?.status === 401 ||
+          error?.response?.status === 403
+        ) {
+          console.error("Refresh token may be invalid, clearing all tokens");
+          clearAllTokens();
+        }
+        reject(error);
+      } finally {
+        isRefreshing = false;
+        refreshPromise = null;
       }
-      
-      // Cập nhật cả hai vị trí lưu token
-      localStorage.setItem(TOKEN_KEY, access_token);
-      localStorage.setItem('token', access_token);
-      
-      // Giảm thời gian hết hạn để đảm bảo an toàn
-      const expiresAt = Date.now() + (expires_in - 60) * 1000;
-      localStorage.setItem(EXPIRES_AT_KEY, expiresAt);
-      
-      console.log('Token refreshed successfully, expires in', expires_in, 'seconds');
-      
-      // Xử lý các request bị lỗi trước đó
-      failedRequests.forEach(req => req.resolve(access_token));
-      failedRequests = [];
-      
-      resolve(access_token);
-    } catch (error) {
-      console.error('Error refreshing token:', error?.response?.data || error.message);
-      
-      // Xử lý các request bị lỗi
-      failedRequests.forEach(req => req.reject(error));
-      failedRequests = [];
-      
-      // Nếu lỗi 401/403, có thể token refresh đã hết hạn, xóa tất cả token
-      if (error?.response?.status === 401 || error?.response?.status === 403) {
-        console.error('Refresh token may be invalid, clearing all tokens');
-        clearAllTokens();
-      }
-      
-      reject(error);
-    } finally {
-      isRefreshing = false;
-      refreshPromise = null;
-    }
+    };
+
+    // Gọi hàm async và truyền refreshTokenValue vào
+    doRefresh(refreshToken);
   });
-  
+
   return refreshPromise;
 };
 

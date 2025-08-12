@@ -1,5 +1,5 @@
 // src/services/unifiedPlaylistManager.js
-import { getAllTracks, getTrackById } from "./localMusicDB";
+import { getTrackById } from "./localMusicDB";
 import { spotifyApi } from "../spotify";
 import UnifiedTrack from '../models/unifiedTrack';
 

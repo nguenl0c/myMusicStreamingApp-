@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getAPIKit } from '../spotify';
 import Queue from '../components/audioPlayer/queue';
@@ -346,9 +346,6 @@ export default function Players({ isPremium = false, user }) {
       )}
 
       <div className="w-full h-full flex flex-col">
-        <h1 className="text-2xl font-bold text-white font-soft">
-          Hi, {user ? `"${user.name}"` : "User"}
-        </h1>
         <div className="flex-grow flex flex-col justify-between md:flex-row gap-6 pt-6 ">
           {/* Album/Track Info & Controls - Left Side (45%%) */}
           <div className="flex flex-col justify-center md:w-[45%] w-full">

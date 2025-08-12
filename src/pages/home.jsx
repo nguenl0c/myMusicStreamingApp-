@@ -1,12 +1,12 @@
 import React from 'react'
 import { useState, useEffect } from 'react';
 import { getAccessToken, setClientToken, isTokenExpired, refreshToken } from "../spotify.js";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import axios from 'axios';
 import Login from './auth/login.jsx';
 import Search from './search.jsx';
 import Library from './library';
-import Players from './players';
+import Players from './PlayersUpdate.jsx';
 import Sidebar from '../components/sidebar/sidebar.jsx';
 import UnifiedPlaylists from './unifiedPlaylists';
 import PlayUnifiedPlaylist from './playUnifiedPlaylist';
@@ -121,8 +121,37 @@ export default function Home() {
       }
     };
     
+    // Chạy ngay lập tức
     checkAndSetupToken();
+    
+    // Lắng nghe storage events để tự động cập nhật khi token thay đổi
+    const handleStorageChange = (e) => {
+      if (e.key === 'spotify_access_token' && e.newValue) {
+        console.log('Token changed in localStorage, updating...');
+        checkAndSetupToken();
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
+  
+  // Thêm effect để theo dõi localStorage changes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const currentToken = getAccessToken();
+      if (currentToken && !token) {
+        console.log('Token detected, updating state...');
+        setToken(currentToken);
+      }
+    }, 500);
+    
+    return () => clearInterval(interval);
+  }, [token]);
   
   // Hiển thị banner thông báo nếu không phải tài khoản Premium
   const PremiumBanner = () => {
@@ -170,6 +199,7 @@ export default function Home() {
           }`}
         >
           <Routes>
+            <Route path="/" element={<Navigate to="/search" replace />} />
             <Route path="/search" element={<Search />} />
             <Route
               path="/players"

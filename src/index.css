@@ -13,3 +13,31 @@
     background-image: linear-gradient(135deg, #85A5D9, #E1E6F0 50%, #96B9D9 100%);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
+
+/* Font Classes - Custom implementations để đảm bảo hoạt động */
+.font-vt323 {
+    font-family: 'VT323', monospace !important;
+}
+
+.font-tiktok {
+    font-family: Inter, sans-serif;
+}
+/* Custom Scrollbar Styles */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: #374151;
+    border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #3A8AE7;
+    border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #3B82F6;
+}   

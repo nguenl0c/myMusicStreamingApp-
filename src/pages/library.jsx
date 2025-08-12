@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { getAPIKit } from "../spotify";
 import { useNavigate } from "react-router-dom";
-import PlaylistItem from "../components/PlaylistItem.jsx"; 
+import PlaylistItem from "../components/PlaylistItem.jsx";
 
 // --- Hằng số để dễ quản lý ---
 const INITIAL_URL = "me/playlists?limit=30";
@@ -20,7 +20,6 @@ export default function Library() {
   const navigate = useNavigate();
 
   const fetchPlaylists = useCallback(async (url, { append = false } = {}) => {
-    // Đặt trạng thái tương ứng
     if (append) {
       setIsLoadingMore(true);
     } else {
@@ -51,18 +50,15 @@ export default function Library() {
       console.error("Không thể lấy playlist:", err);
       setError(err.message || "Đã xảy ra lỗi khi tải playlist");
       setStatus("error");
-      // Không cần set playlist về mảng rỗng vì state `status` đã xử lý việc hiển thị
     } finally {
       setIsLoadingMore(false);
     }
   }, []);
 
-  // Lấy dữ liệu lần đầu
   useEffect(() => {
     fetchPlaylists(INITIAL_URL);
   }, [fetchPlaylists]);
 
-  // Logic xử lý cuộn trang
   const handleScroll = useCallback(() => {
     if (scrollTimeoutRef.current) {
       clearTimeout(scrollTimeoutRef.current);
@@ -81,8 +77,14 @@ export default function Library() {
     }, DEBOUNCE_DELAY);
   }, [nextUrl, isLoadingMore, status, fetchPlaylists]);
 
+  // SỬA LỖI Ở ĐÂY: Thêm 'type: "playlist"' vào state khi điều hướng
   const playPlaylist = (id) => {
-    navigate("/players", { state: { id: id } });
+    navigate("/players", {
+      state: {
+        id: id,
+        type: "playlist" // Báo cho Player biết đây là một playlist
+      }
+    });
   };
 
   const renderContent = () => {
@@ -142,7 +144,7 @@ export default function Library() {
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="w-full h-full p-[3%] flex flex-wrap justify-center content-start gap-6 overflow-y-auto" 
+        className="w-full h-full p-[3%] flex flex-wrap justify-center content-start gap-6 overflow-y-auto"
       >
         {renderContent()}
       </div>

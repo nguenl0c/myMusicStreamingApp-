@@ -40,9 +40,10 @@ const Callback = () => {
           setTimeout(() => {
             const savedToken = localStorage.getItem('spotify_access_token');
             console.log('Token saved check:', savedToken ? 'YES' : 'NO');
-            console.log('Navigating to /library...');
-            navigate('/library');
-          }, 100);
+            console.log('Navigating to /search...');
+            // Sử dụng window.location.href để force reload và đảm bảo Home component nhận token mới
+            window.location.href = '/search';
+          }, 200);
         } else {
           console.error('Failed to get token, redirecting to home');
           navigate('/');
