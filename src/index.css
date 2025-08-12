@@ -19,9 +19,10 @@
     font-family: 'VT323', monospace !important;
 }
 
-.font-tiktok {
-    font-family: Inter, sans-serif;
+.font-outfit {
+    font-family: 'Outfit', sans-serif;
 }
+
 /* Custom Scrollbar Styles */
 .custom-scrollbar::-webkit-scrollbar {
     width: 8px;

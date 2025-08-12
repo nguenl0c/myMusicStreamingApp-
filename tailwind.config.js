@@ -11,7 +11,7 @@ export default {
         'soft': ['Nunito', 'sans-serif'],
         'smooth': ['Source Sans 3', 'sans-serif'],
         'vt323': ['VT323', 'monospace'],
-        'retro': ['VT323', 'monospace'], // Thêm alias khác cho VT323
+        'outfit': ['Outfit', 'sans-serif'],
       },
     },
   },

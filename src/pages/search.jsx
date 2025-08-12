@@ -9,7 +9,7 @@ export default function Search() {
   const [searchResults, setSearchResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [artistTracks, setArtistTracks] = useState(null);
-  const [selectedArtist, setSelectedArtist] = useState(null);
+  const [_selectedArtist, setSelectedArtist] = useState(null);
   
   const navigate = useNavigate();
 
@@ -32,45 +32,37 @@ export default function Search() {
   };
 
   const playTrack = (track) => {
-    // Format track để phù hợp với cấu trúc tracks trong Queue
-    const formattedTracks = [{
-      track: track
-    }];
-    
-    navigate("/players", { 
-      state: { 
-        uri: track.uri, 
-        type: "track", 
-        trackData: track,
-        formattedTracks: formattedTracks,
-        isPlaying: true // Thêm trạng thái isPlaying để bài hát tự phát
-      } 
+    navigate("/players", {
+      state: {
+        type: "album", // Play within the album context
+        id: track.album.id,
+        offset: { uri: track.uri }, // Start from this specific track
+      },
     });
   };
-  
+
   const playAlbum = (album) => {
     navigate("/players", {
       state: {
         type: "album",
         id: album.id,
-        name: album.name,
-        uri: album.uri,
-        isPlaying: true // Thêm trạng thái isPlaying để bài hát tự phát
-      }
+      },
     });
   };
-  
+
   const viewArtist = async (artist) => {
     setLoading(true);
     setSelectedArtist(artist);
-    
+
     try {
       const api = getAPIKit();
-      const response = await api.get(`artists/${artist.id}/top-tracks?market=VN`);
+      const response = await api.get(
+        `artists/${artist.id}/top-tracks?market=VN`
+      );
       setArtistTracks({
         name: artist.name,
         id: artist.id,
-        tracks: response.data.tracks
+        tracks: response.data.tracks,
       });
       setLoading(false);
     } catch (error) {
@@ -78,23 +70,14 @@ export default function Search() {
       setLoading(false);
     }
   };
-  
+
   const playArtistTracks = () => {
-    if (!artistTracks || !artistTracks.tracks || artistTracks.tracks.length === 0) return;
-    
-    // Tạo đúng định dạng tracks giống như trong component Queue
-    const formattedTracks = artistTracks.tracks.map(track => ({
-      track: track
-    }));
-    
+    if (!artistTracks || !artistTracks.id) return;
     navigate("/players", {
       state: {
-        type: "tracks",
-        artistName: artistTracks.name,
-        trackData: artistTracks.tracks[0],
-        formattedTracks: formattedTracks,
-        isPlaying: true // Thêm trạng thái isPlaying để bài hát tự phát
-      }
+        type: "artist",
+        id: artistTracks.id,
+      },
     });
   };
   
@@ -276,19 +259,3 @@ export default function Search() {
   );
 }
 // ```
-
-// // Các thay đổi chính:
-
-// // 1. Thêm `isPlaying: true` vào state khi chuyển hướng đến player để bài hát tự phát ngay
-// // 2. Thêm chức năng xem chi tiết nghệ sĩ với state `artistTracks` và `selectedArtist`
-// // 3. Thêm hàm `viewArtist` để lấy bài hát nổi bật của nghệ sĩ từ API Spotify
-// // 4. Thêm hàm `playArtistTracks` để phát tất cả bài hát của nghệ sĩ như một danh sách phát
-// // 5. Thêm hàm `playAlbum` để phát album như một danh sách phát
-// // 6. Thêm UI hiển thị danh sách bài hát của nghệ sĩ khi người dùng nhấp vào nghệ sĩ
-// // 7. Thêm nút "Quay lại" để quay về kết quả tìm kiếm từ trang chi tiết nghệ sĩ
-
-// // Với những thay đổi này, người dùng có thể:
-// // - Nhấn vào bài hát để phát ngay (tự động phát)
-// // - Nhấn vào album để xem và phát toàn bộ album (như một danh sách phát)
-// // - Nhấn vào nghệ sĩ để xem danh sách bài hát nổi bật của họ
-// // - Phát tất cả bài hát của nghệ sĩ từ trang chi tiết

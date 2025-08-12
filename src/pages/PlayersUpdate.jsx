@@ -130,7 +130,7 @@ export default function Players({ isPremium = false }) {
     const [activeContext, setActiveContext] = useState({ id: null, type: null });
     const [tracks, setTracks] = useState([]);
     const [status, setStatus] = useState('waiting');
-    const [error, setError] = useState(null);
+    const [_error, setError] = useState(null);
 
     const { player, isReady, deviceId, playerState } = useSpotifyPlayer();
 
@@ -149,7 +149,8 @@ export default function Players({ isPremium = false }) {
             const apiClient = getAPIKit();
             await apiClient.put(`/me/player/play?device_id=${deviceId}`, options);
         } catch (err) {
-            setError("Không thể phát nhạc. Hãy đảm bảo Spotify đang mở trên một thiết bị khác.");
+            console.error('Playback start failed:', err);
+            setError("Không thể phát nhạc.");
             setStatus('error');
         }
     }, [isReady, deviceId]);

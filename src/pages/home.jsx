@@ -10,7 +10,7 @@ import Players from './PlayersUpdate.jsx';
 import Sidebar from '../components/sidebar/sidebar.jsx';
 import UnifiedPlaylists from './unifiedPlaylists';
 import PlayUnifiedPlaylist from './playUnifiedPlaylist';
-import Mixer from './mixer.jsx';
+import Mixer from './MixerUpdate.jsx';
 
 export default function Home() {
   const [token, setToken] = useState("");
@@ -199,7 +199,7 @@ export default function Home() {
           }`}
         >
           <Routes>
-            <Route path="/" element={<Navigate to="/search" replace />} />
+            <Route path="/" element={<Navigate to="/players" replace />} />
             <Route path="/search" element={<Search />} />
             <Route
               path="/players"
@@ -211,8 +211,9 @@ export default function Home() {
             <Route path="/play/:playlistId" element={<PlayUnifiedPlaylist />} />
           </Routes>
         </div>
-      </div>      {/* Debug Panel */}
-      <div className="fixed bottom-0 right-0 bg-black bg-opacity-70 text-white p-2 text-xs z-50 max-w-xs">
+      </div>
+      {/* Debug Panel */}
+      <div className="fixed top-0 right-0 bg-black/30 text-white p-2 text-xs z-50 max-w-xs">
         <p>Premium: {isPremium ? "Yes" : "No"}</p>
         <p>Token: {token ? token.substring(0, 10) + "..." : "None"}</p>
         {user && <p>User: {user.name}</p>}
