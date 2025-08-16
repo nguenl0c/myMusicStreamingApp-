@@ -44,8 +44,13 @@ export const mixStems = (stemPaths, songName) => api.post('/mix', { stemPaths, s
  * @param {string} trackId - ID của track.
  * @returns {Promise}
  */
-export const startTranscription = (trackId) => {
-    return api.post(`/transcribe/${trackId}`);
+export const startTranscription = (trackId, options = {}) => {
+    const payload = {};
+    if (options.model) payload.model = options.model;
+    if (options.language) payload.language = options.language;
+    if (options.stemFile) payload.stemFile = options.stemFile; // ví dụ: 'vocals.mp3'
+    if (options.engine) payload.engine = options.engine; // optional: stable or whisper-cli
+    return api.post(`/transcribe/${trackId}`, payload);
 };
 
 /**
