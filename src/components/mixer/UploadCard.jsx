@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { useStemSeparation } from '../../hooks/useStemSeparation'; // Giả sử hooks ở thư mục /hooks
-import { formatFileSize } from '../utils/formatters'; // Giả sử có file utils
+import { useStemSeparation } from '../../hooks/useStemSeparation';
+import { formatFileSize } from '../utils/formatters';
 
-// Props:
-// - onSeparationComplete: Hàm được gọi khi một track tách xong để component cha fetch lại list
 export default function UploadCard({ onSeparationComplete }) {
     const [uploadedFile, setUploadedFile] = useState(null);
+    const [model, setModel] = useState('htdemucs');
+    const [twoStems, setTwoStems] = useState(''); // '', 'vocals', 'drums', 'bass', 'other'
+    const [mp3Bitrate, setMp3Bitrate] = useState(192);
+    const [mp3Preset, setMp3Preset] = useState(5);
     const {
         isSeparating,
-        progressLog,
+        percent,
+        statusText,
+        isSuccess, // <-- Sử dụng state mới
         error,
         newlyCompletedTrack,
         startSeparation
@@ -16,7 +20,9 @@ export default function UploadCard({ onSeparationComplete }) {
 
     useEffect(() => {
         if (newlyCompletedTrack) {
-            onSeparationComplete(); // Thông báo cho cha
+            onSeparationComplete();
+            // Xóa file đã upload khỏi state sau khi hoàn tất để sẵn sàng cho lần tiếp theo
+            setUploadedFile(null);
         }
     }, [newlyCompletedTrack, onSeparationComplete]);
 
@@ -29,20 +35,42 @@ export default function UploadCard({ onSeparationComplete }) {
 
     const handleStart = () => {
         if (uploadedFile) {
-            startSeparation(uploadedFile);
+            startSeparation(uploadedFile, { model, twoStems: twoStems || undefined, mp3Bitrate, mp3Preset });
         }
     };
 
-    return (
-        <div className="bg-gradient-to-br from-blue-50/80 to-blue-100/60 backdrop-blur-md border border-blue-200/30 rounded-3xl p-6 shadow-xl h-full">
-            <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-                <span className="w-8 h-8 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-sm text-white font-semibold">
-                    1
-                </span>
-                Upload & Tách nhạc
-            </h3>
+    // Component hiển thị khi thành công
+    const SuccessView = () => (
+        <div className="flex flex-col items-center justify-center text-center p-6 bg-green-500/10 border border-green-500/30 rounded-2xl">
+            <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mb-4">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+            </div>
+            <h4 className="text-lg font-bold text-green-800">Tách nhạc thành công!</h4>
+            <p className="text-green-700">Stems mới đã được thêm vào thư viện của bạn.</p>
+        </div>
+    );
 
-            {/* File Upload */}
+    // Component hiển thị khi đang xử lý
+    const ProcessingView = () => (
+        <div className="p-4 bg-white/60 rounded-xl backdrop-blur-md border border-blue-200/50">
+            <div className="flex justify-between items-center mb-2">
+                <p className="text-sm font-medium text-gray-700">{statusText}</p>
+                <p className="text-sm font-bold text-blue-600">{Math.round(percent)}%</p>
+            </div>
+            <div className="w-full bg-blue-200/50 rounded-full h-2.5 overflow-hidden">
+                <div
+                    className="bg-gradient-to-r from-blue-400 to-blue-600 h-2.5 rounded-full transition-all duration-500 ease-out"
+                    style={{ width: `${percent}%` }}
+                ></div>
+            </div>
+        </div>
+    );
+
+    // Component hiển thị form upload
+    const UploadForm = () => (
+        <>
             <div className="mb-6">
                 <input
                     type="file"
@@ -52,7 +80,7 @@ export default function UploadCard({ onSeparationComplete }) {
                 />
                 {uploadedFile && (
                     <div className="mt-3 p-3 bg-white/60 rounded-xl backdrop-blur-sm border border-blue-200/50">
-                        <div className="text-gray-800 font-medium truncate">
+                        <div className="text-gray-800 font-medium truncate" title={uploadedFile.name}>
                             {uploadedFile.name}
                         </div>
                         <div className="text-gray-600 text-sm">
@@ -62,40 +90,76 @@ export default function UploadCard({ onSeparationComplete }) {
                 )}
             </div>
 
-            {/* Start Button */}
+            {/* Options */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                <div>
+                    <label className="block text-xs text-gray-600 mb-1">Mô hình</label>
+                    <select value={model} onChange={e => setModel(e.target.value)} className="w-full p-2 border rounded-xl bg-white/60">
+                        <option value="htdemucs">htdemucs (mặc định)</option>
+                        <option value="mdx_q">mdx_q (nhẹ hơn, nhanh hơn)</option>
+                        <option value="htdemucs_ft">htdemucs_ft</option>
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-xs text-gray-600 mb-1">Chỉ tách 1 stem (tùy chọn)</label>
+                    <select value={twoStems} onChange={e => setTwoStems(e.target.value)} className="w-full p-2 border rounded-xl bg-white/60">
+                        <option value="">Tách 4 stems</option>
+                        <option value="vocals">Chỉ vocals</option>
+                        <option value="drums">Chỉ drums</option>
+                        <option value="bass">Chỉ bass</option>
+                        <option value="other">Chỉ other</option>
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-xs text-gray-600 mb-1">MP3 Bitrate</label>
+                    <select value={mp3Bitrate} onChange={e => setMp3Bitrate(Number(e.target.value))} className="w-full p-2 border rounded-xl bg-white/60">
+                        <option value={128}>128 kbps</option>
+                        <option value={192}>192 kbps</option>
+                        <option value={256}>256 kbps</option>
+                        <option value={320}>320 kbps</option>
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-xs text-gray-600 mb-1">MP3 Preset</label>
+                    <select value={mp3Preset} onChange={e => setMp3Preset(Number(e.target.value))} className="w-full p-2 border rounded-xl bg-white/60">
+                        <option value={2}>2 (chất lượng tốt nhất)</option>
+                        <option value={5}>5 (mặc định)</option>
+                        <option value={7}>7 (nhanh nhất)</option>
+                    </select>
+                </div>
+            </div>
+
             {uploadedFile && (
                 <div className="mb-4">
                     <button
-                        className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg"
                         onClick={handleStart}
-                        disabled={isSeparating}
                     >
-                        {isSeparating ? 'Đang xử lý...' : 'Bắt đầu tách nhạc'}
+                        Bắt đầu tách nhạc
                     </button>
                 </div>
             )}
+        </>
+    );
 
-            {/* Terminal Log */}
-            {isSeparating && (
-                <div className="mt-6 p-4 bg-white/60 rounded-xl backdrop-blur-md border border-blue-200/50">
-                    <div className="flex items-center justify-between mb-2">
-                        <span className="text-gray-800 font-medium flex items-center">
-                            <span className="inline-block w-2 h-2 bg-blue-500 rounded-full animate-pulse mr-2"></span>
-                            Đang tách nhạc
-                        </span>
-                    </div>
-                    <div className="p-3 bg-gray-100/80 rounded-xl max-h-64 overflow-y-auto backdrop-blur-sm border border-blue-200/30">
-                        <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono">
-                            {progressLog.slice(-2000) || 'Đang khởi động...'}
-                        </pre>
-                    </div>
-                </div>
-            )}
+
+    return (
+        <div className="bg-gradient-to-br from-blue-50/80 to-blue-100/60 backdrop-blur-md border border-blue-200/30 rounded-3xl p-6 shadow-xl h-full flex flex-col">
+            <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2 flex-shrink-0">
+                <span className="w-8 h-8 bg-gradient-to-r from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-sm text-white font-semibold">
+                    1
+                </span>
+                Upload & Tách nhạc
+            </h3>
+
+            <div className="flex-grow flex flex-col justify-center">
+                {isSuccess ? <SuccessView /> : isSeparating ? <ProcessingView /> : <UploadForm />}
+            </div>
 
             {/* Error Display */}
-            {error && (
-                <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400">
-                    {error}
+            {error && !isSeparating && (
+                <div className="mt-4 p-4 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+                    <strong>Lỗi:</strong> {error}
                 </div>
             )}
         </div>

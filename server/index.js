@@ -6,7 +6,8 @@ import querystring from 'querystring';
 import process from 'process';
 import { Buffer } from 'buffer';
 import path from 'path';
-import demucsApiRouter from './demucs-api.js';
+import demucsApiRouter, { uploadedTracks, createUniqueDirectoryName } from './demucs-api.js';
+import createWhisperRouter from './whisper-api.js';
 
 dotenv.config({path: '.env'});
 console.log('Environment variables loaded:');
@@ -19,13 +20,15 @@ const port = 5000;
 
 app.use(cors({
     origin: [ 'http://localhost:5180'], // Bao gồm các port có thể dùng
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST', 'DELETE'],
     credentials: true
   }));
 app.use(express.json());
 
 // Mount demucs API router
 app.use('/api', demucsApiRouter);
+// Mount whisper API router (lyrics extraction/karaoke)
+app.use('/api', createWhisperRouter(uploadedTracks, createUniqueDirectoryName));
 
 // Serve static files for output
 const __dirname = path.resolve();

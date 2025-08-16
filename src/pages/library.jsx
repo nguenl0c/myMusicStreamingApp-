@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { getAPIKit } from "../spotify";
+import { callSpotifyAPI } from "../spotify";
 import { useNavigate } from "react-router-dom";
 import PlaylistItem from "../components/PlaylistItem.jsx";
 
@@ -28,17 +28,18 @@ export default function Library() {
     setError(null);
 
     try {
-      const api = getAPIKit();
-      const response = await api.get(url);
+      // Ensure endpoint starts with '/'
+      const endpoint = url.startsWith('/') ? url : `/${url}`;
+      const response = await callSpotifyAPI('get', endpoint);
 
-      if (!response.data || !response.data.items) {
+      if (!response || !response.items) {
         throw new Error("Dữ liệu trả về không hợp lệ");
       }
 
-      setPlaylists(prev => append ? [...prev, ...response.data.items] : response.data.items);
+      setPlaylists(prev => append ? [...prev, ...response.items] : response.items);
 
-      if (response.data.next) {
-        const nextUrlObject = new URL(response.data.next);
+      if (response.next) {
+        const nextUrlObject = new URL(response.next);
         const nextRelativeUrl = (nextUrlObject.pathname + nextUrlObject.search).replace('/v1', '');
         setNextUrl(nextRelativeUrl);
       } else {

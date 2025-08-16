@@ -1,6 +1,6 @@
 // src/services/unifiedPlaylistManager.js
 import { getTrackById } from "./localMusicDB";
-import { spotifyApi } from "../spotify";
+import { callSpotifyAPI } from "../spotify";
 import UnifiedTrack from '../models/unifiedTrack';
 
 const PLAYLISTS_STORAGE_KEY = "unified_playlists";
@@ -61,10 +61,7 @@ class UnifiedPlaylistManager {
 
     try {
       // Lấy thông tin bài hát từ Spotify API
-      const response = await spotifyApi.request({
-        method: "GET",
-        url: `https://api.spotify.com/v1/tracks/${spotifyTrackId}`,
-      });
+  const response = await callSpotifyAPI('get', `/tracks/${spotifyTrackId}`);
 
       if (!response) throw new Error("Failed to fetch track from Spotify");
 
@@ -153,10 +150,7 @@ class UnifiedPlaylistManager {
   async importFromSpotifyPlaylist(spotifyPlaylistId) {
     try {
       // Lấy thông tin playlist từ Spotify API
-      const playlistResponse = await spotifyApi.request({
-        method: "GET",
-        url: `https://api.spotify.com/v1/playlists/${spotifyPlaylistId}`,
-      });
+  const playlistResponse = await callSpotifyAPI('get', `/playlists/${spotifyPlaylistId}`);
 
       if (!playlistResponse)
         throw new Error("Failed to fetch playlist from Spotify");
@@ -173,10 +167,7 @@ class UnifiedPlaylistManager {
 
       // Xử lý phân trang nếu có nhiều bài hát
       while (next) {
-        const nextTracksResponse = await spotifyApi.request({
-          method: "GET",
-          url: next,
-        });
+        const nextTracksResponse = await callSpotifyAPI('get', next.startsWith('https://') ? next.replace('https://api.spotify.com/v1', '') : next);
 
         if (!nextTracksResponse) break;
 

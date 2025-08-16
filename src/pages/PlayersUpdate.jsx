@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
-import { getAPIKit } from '../spotify.js';
+import { callSpotifyAPI } from '../spotify.js';
 import useSpotifyPlayer from '../hooks/useSpotifyPlayer';
 
 // Import các component con
@@ -29,10 +29,9 @@ const UserPlaylistsView = ({ onSelectPlaylist }) => {
     useEffect(() => {
         const fetchUserPlaylists = async () => {
             setIsLoading(true);
-            try {
-                const apiClient = getAPIKit();
-                const response = await apiClient.get('/me/playlists?limit=30');
-                setPlaylists(response.data?.items || []);
+    try {
+        const response = await callSpotifyAPI('get', '/me/playlists', { params: { limit: 30 } });
+        setPlaylists(response?.items || []);
             } catch (error) {
                 console.error("Không thể lấy danh sách playlist của người dùng:", error);
             } finally {
@@ -146,8 +145,10 @@ export default function Players({ isPremium = false }) {
             return;
         }
         try {
-            const apiClient = getAPIKit();
-            await apiClient.put(`/me/player/play?device_id=${deviceId}`, options);
+            await callSpotifyAPI('put', `/me/player/play`, {
+                params: { device_id: deviceId },
+                data: options
+            });
         } catch (err) {
             console.error('Playback start failed:', err);
             setError("Không thể phát nhạc.");
@@ -163,16 +164,15 @@ export default function Players({ isPremium = false }) {
         setStatus('loading');
         setError(null);
         try {
-            const apiClient = getAPIKit();
             const { id, type } = activeContext;
             let contextUri = `spotify:${type}:${id}`;
             let responseTracks = [];
             if (type === 'playlist') {
-                const response = await apiClient.get(`/playlists/${id}/tracks`);
-                responseTracks = response.data?.items || [];
+                const response = await callSpotifyAPI('get', `/playlists/${id}/tracks`);
+                responseTracks = response?.items || [];
             } else if (type === 'album') {
-                const response = await apiClient.get(`/albums/${id}/tracks`);
-                responseTracks = response.data?.items.map(item => ({ track: item })) || [];
+                const response = await callSpotifyAPI('get', `/albums/${id}/tracks`);
+                responseTracks = response?.items.map(item => ({ track: item })) || [];
             }
             if (responseTracks.length > 0) {
                 setTracks(responseTracks);

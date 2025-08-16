@@ -6,7 +6,8 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    port: 5180, // Cố định port để tránh thay đổi
+  port: 5180, // Cố định port để tránh thay đổi
+  strictPort: true, // Không tự đổi port để tránh nhầm URL
     proxy: {
       '/auth': {
         target: 'http://localhost:5000',

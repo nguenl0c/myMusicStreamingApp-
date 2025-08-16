@@ -1,4 +1,4 @@
-import React from 'react'
+
 import { useState, useEffect } from 'react';
 import { getAccessToken, setClientToken, isTokenExpired, refreshToken } from "../spotify.js";
 import { Routes, Route, Navigate } from "react-router-dom";
@@ -10,7 +10,8 @@ import Players from './PlayersUpdate.jsx';
 import Sidebar from '../components/sidebar/sidebar.jsx';
 import UnifiedPlaylists from './unifiedPlaylists';
 import PlayUnifiedPlaylist from './playUnifiedPlaylist';
-import Mixer from './MixerUpdate.jsx';
+import Mixer from './MixerUpdate.jsx'
+import KaraokePage from './karaoke.jsx'
 
 export default function Home() {
   const [token, setToken] = useState("");
@@ -207,6 +208,7 @@ export default function Home() {
             />
             <Route path="/library" element={<Library />} />
             <Route path="/mixer" element={<Mixer />} />
+            <Route path="/karaoke" element={<KaraokePage />} />
             <Route path="/playlists" element={<UnifiedPlaylists />} />
             <Route path="/play/:playlistId" element={<PlayUnifiedPlaylist />} />
           </Routes>

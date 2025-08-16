@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { mixStems } from '../../services/mixerAPI'; 
+import { mixStems } from '../../services/mixerApi'; 
 import { formatTime } from '../utils/formatters';
 
 // Props:
@@ -14,6 +14,7 @@ export default function MixerCard({
     playAllSelected,
     stopAllAudio,
     seekAll,
+    handleSelectStem,
     onMixComplete,
 }) {
     const [songName, setSongName] = useState('');
@@ -63,7 +64,33 @@ export default function MixerCard({
                     <h4 className="text-gray-800 font-medium text-sm mb-2">
                         Đã chọn ({selectedCount} stems):
                     </h4>
-                    {/* ... UI hiển thị các stem đã chọn ... */}
+                    <ul className="space-y-1">
+                        {Object.entries(selectedStems).map(([key, stem]) => (
+                            <li key={key} className="flex items-center gap-2 text-gray-700 text-sm bg-blue-50/60 rounded px-2 py-1">
+                                {/* Icon stem */}
+                                <span className="inline-block w-5 text-blue-500">
+                                    {stem.type === 'vocals' && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l9-5-9-5-9 5 9 5zm0 7v-7" /></svg>}
+                                    {stem.type === 'drums' && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" /><circle cx="12" cy="12" r="4" fill="currentColor" /></svg>}
+                                    {stem.type === 'bass' && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="4" rx="2" fill="currentColor" /></svg>}
+                                    {stem.type === 'other' && <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" /><path d="M8 12h8" stroke="currentColor" strokeWidth="2" /></svg>}
+                                </span>
+                                <span className="truncate font-medium" title={stem.song}>{stem.song}</span>
+                                <span className="text-xs text-gray-500">({stem.type})</span>
+                                <button
+                                    className="ml-auto px-2 py-1 text-xs text-red-500 hover:underline"
+                                    title="Bỏ chọn stem này"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (typeof handleSelectStem === 'function') {
+                                            handleSelectStem({ song: stem.song }, stem.type, stem.url);
+                                        }
+                                    }}
+                                >
+                                    Bỏ chọn
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
                 </div>
             )}
 

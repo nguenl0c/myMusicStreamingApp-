@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import unifiedPlaylistManager from '../services/unifiedPlaylistManager';
 import { getAllTracks } from '../services/localMusicDB';
-import { spotifyApi } from '../spotify';
+import { callSpotifyAPI } from '../spotify';
 import LocalTrackUploader from '../components/audioPlayer/localTrackUploader';
 
 export default function UnifiedPlaylists() {
@@ -49,14 +49,8 @@ export default function UnifiedPlaylists() {
         setIsSearching(true);
 
         try {
-            const response = await spotifyApi.request({
-                method: 'GET',
-                url: 'https://api.spotify.com/v1/search',
-                params: {
-                    q: searchQuery,
-                    type: 'track',
-                    limit: 10
-                }
+            const response = await callSpotifyAPI('get', '/search', {
+                params: { q: searchQuery, type: 'track', limit: 10 }
             });
 
             if (response && response.tracks && response.tracks.items) {
@@ -415,7 +409,7 @@ export default function UnifiedPlaylists() {
                         {/* Upload nhạc mới */}
                         <div className="mb-4">
                             <LocalTrackUploader
-                                onTracksUploaded={(trackIds) => {
+                                onTracksUploaded={() => {
                                     getAllTracks().then(tracks => setLocalTracks(tracks));
                                 }}
                             />

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { getAPIKit } from "../spotify";
+import { callSpotifyAPI } from "../spotify";
 import { IconContext } from "react-icons";
 import { AiFillPlayCircle } from "react-icons/ai";
 import { useNavigate } from "react-router-dom";
@@ -19,9 +19,10 @@ export default function Search() {
     
     setLoading(true);
     try {
-      const api = getAPIKit();
-      const response = await api.get(`search?q=${search}&type=track,artist,album&limit=10`);
-      setSearchResults(response.data);
+      const response = await callSpotifyAPI('get', '/search', {
+        params: { q: search, type: 'track,artist,album', limit: 10 }
+      });
+      setSearchResults(response);
       setArtistTracks(null);
       setSelectedArtist(null);
       setLoading(false);
@@ -55,14 +56,13 @@ export default function Search() {
     setSelectedArtist(artist);
 
     try {
-      const api = getAPIKit();
-      const response = await api.get(
-        `artists/${artist.id}/top-tracks?market=VN`
-      );
+      const response = await callSpotifyAPI('get', `/artists/${artist.id}/top-tracks`, {
+        params: { market: 'VN' }
+      });
       setArtistTracks({
         name: artist.name,
         id: artist.id,
-        tracks: response.data.tracks,
+        tracks: response.tracks,
       });
       setLoading(false);
     } catch (error) {

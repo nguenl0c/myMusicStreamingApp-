@@ -7,7 +7,8 @@ import { IoLogOut } from "react-icons/io5";
 import { IoSearch } from "react-icons/io5";
 import { PiPlaylistBold } from "react-icons/pi";
 import { RxMixerVertical } from "react-icons/rx";
-import { getAPIKit, clearAllTokens } from "../../spotify";
+import { BiMicrophone } from "react-icons/bi";
+import { callSpotifyAPI, clearAllTokens } from "../../spotify";
 
 
 export default function Sidebar() {
@@ -19,17 +20,16 @@ export default function Sidebar() {
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
-        const api = getAPIKit(); // Luôn lấy instance mới với token mới nhất
-        const response = await api.get("me");
-        if (response.data.images && response.data.images.length > 0) {
-          setImage(response.data.images[0].url);
+        const response = await callSpotifyAPI('get', "/me");
+        if (response.images && response.images.length > 0) {
+          setImage(response.images[0].url);
         }
         
         // Lưu thông tin user để hiển thị trong tooltip
         setUserInfo({
-          name: response.data.display_name || response.data.id,
-          email: response.data.email,
-          product: response.data.product // "premium" hoặc "free"
+          name: response.display_name || response.id,
+          email: response.email,
+          product: response.product // "premium" hoặc "free"
         });
       } catch (error) {
         console.error("Không thể lấy thông tin người dùng:", error);
@@ -81,13 +81,25 @@ export default function Sidebar() {
         )}
       </div>
       <div className="flex flex-col h-full justify-center">
-        <SidebarButton title="Search" to="/search" icon={<IoSearch />} />
+        <SidebarButton title="Search" 
+        to="/search" 
+        icon={<IoSearch />} 
+        />
         <SidebarButton
           title="Mixer"
-          to="/Mixer"
+          to="/mixer"
           icon={<RxMixerVertical />}
         />
-        <SidebarButton title="Play" to="/players" icon={<FaPlay />} />
+        <SidebarButton
+          title="Karaoke"
+          to="/karaoke"
+          icon={<BiMicrophone />}
+        />
+        <SidebarButton 
+        title="Play" 
+        to="/players" 
+        icon={<FaPlay />} 
+        />
         <SidebarButton
           title="Virtual"
           to="/playlists"

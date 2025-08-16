@@ -1,3 +1,4 @@
+// server/demucs-api.js
 import express from "express";
 import multer from "multer";
 import fs from "fs";
@@ -5,286 +6,244 @@ import path from "path";
 import { v4 as uuidv4 } from "uuid";
 import { spawn } from "child_process";
 import process from "process";
-import crypto from "crypto";
+import { Buffer } from "buffer";
 
-// Function để chuẩn hóa tên file tiếng Việt thành không dấu
-function normalizeVietnamese(str) {
-  // Sử dụng Unicode normalization để tách dấu khỏi ký tự
-  let normalized = str.normalize('NFD');
-  
-  // Loại bỏ các dấu (combining characters)
-  normalized = normalized.replace(/[\u0300-\u036f]/g, '');
-  
-  // Xử lý các ký tự đặc biệt của tiếng Việt
-  const vietnameseMap = {
-    'đ': 'd', 'Đ': 'D',
-    'ð': 'd', 'Ð': 'D' // Fallback cho một số encoding
-  };
-  
-  // Thay thế các ký tự đặc biệt
-  normalized = normalized.replace(/[đĐðÐ]/g, char => vietnameseMap[char] || char);
-  
-  // Loại bỏ các ký tự không phải chữ cái, số, khoảng trắng, dấu gạch ngang, underscore, dấu chấm
-  normalized = normalized.replace(/[^a-zA-Z0-9\s\-_\.]/g, '');
-  
-  // Thay khoảng trắng bằng underscore
-  normalized = normalized.replace(/\s+/g, '_');
-  
-  // Loại bỏ underscore liên tiếp
-  normalized = normalized.replace(/_{2,}/g, '_');
-  
-  // Loại bỏ underscore đầu và cuối
-  normalized = normalized.replace(/^_|_$/g, '');
-  
-  return normalized;
+// ====================================================================
+// PHẦN 1: CÁC HÀM TIỆN ÍCH XỬ LÝ TÊN FILE
+// ====================================================================
+
+/**
+ * Cố gắng sửa lỗi mã hóa (mojibake) khi tên file UTF-8 bị đọc sai.
+ * @param {string} str - Chuỗi đầu vào.
+ * @returns {string} Chuỗi đã được sửa (nếu có thể).
+ */
+function maybeFixMojibake(str) {
+  if (!str) return str;
+  if (/[ÃÂáºá»Ð]/.test(str)) { // Heuristic để phát hiện lỗi
+    try {
+      const repaired = Buffer.from(str, 'latin1').toString('utf8');
+      if (/[ăâêôơưđÁÀẢÃẠÂĂÊÔƠƯĐ]/i.test(repaired)) {
+        return repaired;
+      }
+    } catch { /* Bỏ qua lỗi */ }
+  }
+  return str;
 }
 
-// Function để tạo tên folder duy nhất
+/**
+ * Chuẩn hóa tên file tiếng Việt: loại bỏ ký tự cấm, giới hạn độ dài.
+ * @param {string} str - Tên file gốc.
+ * @returns {string} Tên file đã được chuẩn hóa.
+ */
+function normalizeVietnamese(str) {
+  if (!str) return 'untitled_song';
+  let name = maybeFixMojibake(String(str)).trim();
+  const ext = path.extname(name);
+  let base = ext ? name.slice(0, -ext.length) : name;
+  base = base.replace(/[<>:"/\\|?*]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!base) base = 'untitled_song';
+  if (base.length > 80) base = base.slice(0, 80).trim();
+  return base.replace(/ /g, '_').replace(/_{2,}/g, '_').replace(/^_|_$/g, '') || 'untitled_song';
+}
+
+/**
+ * Tạo ra một tên thư mục duy nhất dựa trên tên bài hát, tránh trùng lặp.
+ * @param {string} baseName - Tên bài hát gốc.
+ * @param {string} outputBaseDir - Thư mục output chính.
+ * @returns {string} Tên thư mục cuối cùng, duy nhất.
+ */
 function createUniqueDirectoryName(baseName, outputBaseDir) {
-  let normalizedName = normalizeVietnamese(baseName);
-  
-  // Loại bỏ extension nếu có
-  normalizedName = normalizedName.replace(/\.[^/.]+$/, "");
-  
-  // Đảm bảo tên không rỗng
-  if (!normalizedName || normalizedName.trim() === '') {
-    normalizedName = 'untitled_song';
-  }
-  
-  // Loại bỏ khoảng trắng đầu cuối
-  normalizedName = normalizedName.trim();
-  
-  // Giới hạn độ dài tên (để tránh lỗi filesystem)
-  if (normalizedName.length > 50) {
-    normalizedName = normalizedName.substring(0, 50).replace(/_+$/, ''); // Loại bỏ underscore cuối
-  }
-  
-  // Đảm bảo tên không bắt đầu hoặc kết thúc bằng dấu chấm (Windows không cho phép)
-  normalizedName = normalizedName.replace(/^\.+|\.+$/g, '');
-  
-  // Nếu sau khi xử lý mà tên rỗng, dùng tên mặc định
-  if (!normalizedName) {
-    normalizedName = 'untitled_song';
-  }
-  
+  let normalizedName = normalizeVietnamese(baseName).replace(/\.[^/.]+$/, "");
+  if (!normalizedName) normalizedName = 'untitled_song';
+
   let finalName = normalizedName;
   let counter = 1;
-  
-  // Kiểm tra trùng lặp và thêm số thứ tự
   while (fs.existsSync(path.join(outputBaseDir, finalName))) {
     finalName = `${normalizedName}_(${counter})`;
     counter++;
-    
-    // Tránh vòng lặp vô hạn
-    if (counter > 1000) {
+    if (counter > 1000) { // Tránh vòng lặp vô hạn
       finalName = `${normalizedName}_${Date.now()}`;
       break;
     }
   }
-  
   return finalName;
 }
+
+// ====================================================================
+// PHẦN 2: ĐỊNH NGHĨA CÁC API ENDPOINTS
+// ====================================================================
 
 const router = express.Router();
 const __dirname = path.resolve();
 const upload = multer({ dest: path.join(__dirname, "server", "uploads") });
-const demucsProgress = {};
-const uploadedTracks = {}; // Lưu thông tin các track đã upload
 
-// API upload file và lấy metadata (không tách nhạc)
+// Lưu trạng thái trong bộ nhớ (sẽ mất khi server khởi động lại)
+const demucsProgress = {};
+// Exported so other routers (e.g., Whisper) can share upload state
+export const uploadedTracks = {};
+
+/**
+ * API: Upload file nhạc.
+ * Chỉ lưu file và thông tin, không xử lý gì thêm.
+ */
 router.post("/upload", upload.single("audio"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
-  const inputPath = req.file.path;
   const trackId = uuidv4();
   const ext = path.extname(req.file.originalname).toLowerCase();
-  const uploadsDir = path.join(__dirname, "server", "uploads");
-  const outputBaseDir = path.join(__dirname, "server", "output");
-  
-  // Tạo tên folder dựa trên tên bài hát
-  const songFolderName = createUniqueDirectoryName(req.file.originalname, outputBaseDir);
-  const newInputPath = path.join(uploadsDir, `${trackId}${ext}`);
+  const newPath = path.join(req.file.destination, `${trackId}${ext}`);
+  fs.renameSync(req.file.path, newPath);
 
-  // Rename file với trackId (giữ nguyên để tránh conflict)
-  fs.renameSync(inputPath, newInputPath);
+  const fixedOriginalName = maybeFixMojibake(req.file.originalname);
 
-  // Tạo thư mục output với tên bài hát
-  const outputDir = path.join(outputBaseDir, songFolderName);
-  fs.mkdirSync(outputDir, { recursive: true });
-
-  // Lưu thông tin track
   uploadedTracks[trackId] = {
     id: trackId,
-    originalName: req.file.originalname,
-    songFolderName: songFolderName, // Thêm tên folder
-    filePath: newInputPath,
-    outputDir: outputDir,
-    uploadedAt: new Date().toISOString(),
+    originalName: fixedOriginalName,
+    filePath: newPath,
   };
-
-  console.log(`[upload] File uploaded: "${req.file.originalname}" -> "${songFolderName}" (${trackId})`);
 
   res.json({
     message: "Upload thành công",
     trackId: trackId,
-    originalName: req.file.originalname,
-    songFolderName: songFolderName,
-    // Có thể thêm metadata khác như duration nếu cần
+    originalName: fixedOriginalName,
   });
 });
 
-// API bắt đầu tách nhạc
+/**
+ * API: Bắt đầu quá trình tách nhạc.
+ */
 router.post("/start-demucs", async (req, res) => {
-  const { trackId } = req.body;
+  const { trackId, model: reqModel, ...options } = req.body;
 
   if (!trackId || !uploadedTracks[trackId]) {
-    return res
-      .status(400)
-      .json({ error: "Invalid trackId or track not found" });
+    return res.status(400).json({ error: "Track không hợp lệ" });
   }
 
   const trackInfo = uploadedTracks[trackId];
-  const model = "htdemucs";
-
-  // Sử dụng python thay vì python3 trên Windows
+  const model = reqModel || "htdemucs";
   const pythonCmd = process.platform === "win32" ? "python" : "python3";
-  const fallbackPythonCmd = process.platform === "win32" ? "python3" : "python";
 
-  const demucsArgs = [
-    "-m",
-    "demucs.separate",
-    "-n",
-    model,
-    "--mp3",
-    "-o",
-    trackInfo.outputDir,
-    trackInfo.filePath,
-  ];
+  // --- CHIẾN LƯỢC XỬ LÝ UNICODE ---
+  // Bước 1: Tạo thư mục output tạm thời với tên đơn giản (trackId) để demucs làm việc.
+  const tempOutputDir = path.join(__dirname, "server", "output", trackId);
+  fs.mkdirSync(tempOutputDir, { recursive: true });
 
-  function runDemucsWithProgress(cmd, cb) {
-    console.log(`[demucs] Trying to run: ${cmd} ${demucsArgs.join(" ")}`);
+  const demucsArgs = ["-m", "demucs.separate", "-n", model, "--mp3"];
+  if (options.twoStems) demucsArgs.push(`--two-stems=${options.twoStems}`);
+  if (options.mp3Bitrate) demucsArgs.push("--mp3-bitrate", String(options.mp3Bitrate));
+  if (options.mp3Preset) demucsArgs.push("--mp3-preset", String(options.mp3Preset));
+  demucsArgs.push("-o", tempOutputDir, trackInfo.filePath);
+
+  const runDemucs = (cmd, callback) => {
+    console.log(`[demucs] Running: ${cmd} ${demucsArgs.join(" ")}`);
+
     const child = spawn(cmd, demucsArgs, {
       windowsHide: true,
-      env: process.env,
-    });
-    demucsProgress[trackId] = { log: "", percent: 0, done: false, error: null };    child.stdout.on("data", (data) => {
-      const str = data.toString();
-      demucsProgress[trackId].log += str;
-      console.log("[demucs stdout]", str);
-      
-      // Cải thiện cách đọc phần trăm từ output
-      const percentMatch = str.match(/(\d{1,3})%|Progress: (\d{1,3})/i);
-      if (percentMatch) {
-        // Lấy giá trị phần trăm từ bất kỳ nhóm nào có giá trị
-        const percent = parseInt(percentMatch[1] || percentMatch[2]);
-        if (!isNaN(percent) && percent >= 0 && percent <= 100) {
-          demucsProgress[trackId].percent = percent;
-          console.log(`[demucs] Updated progress: ${percent}%`);
-        }
-      } else if (str.includes("Done")) {
-        // Nếu thấy từ "Done", đặt tiến trình là 100%
-        demucsProgress[trackId].percent = 100;
-        console.log('[demucs] Process completed, setting progress to 100%');
-      }
-    });    child.stderr.on("data", (data) => {
-      const str = data.toString();
-      demucsProgress[trackId].log += str;
-      console.error("[demucs stderr]", str);
-      
-      // Nhiều khi thông tin tiến trình xuất hiện trong stderr thay vì stdout
-      const percentMatch = str.match(/(\d{1,3})%|Progress: (\d{1,3})/i);
-      if (percentMatch) {
-        // Lấy giá trị phần trăm từ bất kỳ nhóm nào có giá trị
-        const percent = parseInt(percentMatch[1] || percentMatch[2]);
-        if (!isNaN(percent) && percent >= 0 && percent <= 100) {
-          demucsProgress[trackId].percent = percent;
-          console.log(`[demucs stderr] Updated progress: ${percent}%`);
-        }
-      }
-      // Nếu tìm thấy chuỗi thông báo hoàn thành, đặt tiến độ 100%
-      else if (str.includes("Separated") || str.includes("Done") || str.includes("complete")) {
-        demucsProgress[trackId].percent = 100;
-      }
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
     });
 
-    // Xử lý error event để tránh crash server
-    child.on("error", (error) => {
-      console.error(`[demucs error] Command: ${cmd}, Error:`, error.message);
-      demucsProgress[trackId].done = true;
-      demucsProgress[trackId].error = `Lỗi chạy lệnh: ${error.message}`;
-      cb(error);
+    demucsProgress[trackId] = { log: "", percent: 0, done: false, error: null };
+
+    child.stderr.on("data", (data) => {
+      const str = data.toString();
+      demucsProgress[trackId].log += str;
+      console.error("[demucs stderr]", str.trim());
+      // Cố gắng đọc tiến trình từ stderr
+      const percentMatch = str.match(/(\d{1,3})%/i);
+      if (percentMatch) {
+        demucsProgress[trackId].percent = parseInt(percentMatch[1]);
+      }
     });
 
     child.on("close", (code) => {
-      console.log(`[demucs] Process closed with code: ${code}`);
       demucsProgress[trackId].done = true;
       if (code !== 0) {
-        demucsProgress[
-          trackId
-        ].error = `Tách nhạc thất bại (exit code: ${code})`;
-        cb(new Error(`Demucs failed with exit code ${code}`));
+        demucsProgress[trackId].error = `Tách nhạc thất bại (exit code: ${code})`;
+        fs.rm(tempOutputDir, { recursive: true, force: true }, () => { }); // Dọn dẹp
+        callback(new Error(`Demucs failed with exit code ${code}`));
       } else {
-        cb(null);
+        demucsProgress[trackId].percent = 100;
+        callback(null);
       }
     });
-  }
+  };
 
-  function tryDemucs(cb) {
-    runDemucsWithProgress(pythonCmd, (err) => {
-      if (err) {
-        console.error(
-          `[demucs] Primary command failed: ${pythonCmd}`,
-          err.message
-        );
-        // Thử fallback command nếu lỗi liên quan đến không tìm thấy python
-        if (
-          err.code === "ENOENT" ||
-          err.message.toLowerCase().includes("not found")
-        ) {
-          console.log(`[demucs] Trying fallback command: ${fallbackPythonCmd}`);
-          runDemucsWithProgress(fallbackPythonCmd, cb);
+  // SỬA LỖI: Hàm mới để đổi tên với cơ chế chờ và thử lại
+  const renameWithRetry = async (source, destination, retries = 5, delay = 200) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        fs.renameSync(source, destination);
+        console.log(`[rename] Success on attempt ${i + 1}`);
+        return; // Thành công, thoát khỏi hàm
+      } catch (err) {
+        if (err.code === 'EPERM' && i < retries - 1) {
+          console.warn(`[rename] Attempt ${i + 1} failed with EPERM. Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
         } else {
-          cb(err);
+          // Nếu không phải lỗi EPERM hoặc đã hết lần thử, ném lỗi ra ngoài
+          throw err;
         }
-      } else {
-        cb(null);
       }
-    });
-  }
+    }
+  };
 
-  // Bắt đầu tiến trình tách nhạc ở background
-  tryDemucs((error) => {
+  // Bắt đầu tiến trình trong nền
+  runDemucs(pythonCmd, async (error) => { // Chuyển callback sang async
     if (error) {
-      console.error("Demucs failed:", error);
+      console.error("Demucs process failed:", error.message);
       return;
     }
 
-    // Xử lý kết quả sau khi tách xong
-    const stemsPath = path.join(trackInfo.outputDir, model, trackId);
-    if (fs.existsSync(stemsPath)) {
-      const stems = {};
-      ["vocals", "drums", "bass", "other"].forEach((stem) => {
-        const src = path.join(stemsPath, `${stem}.mp3`);
-        const dest = path.join(trackInfo.outputDir, `${stem}.mp3`);
-        if (fs.existsSync(src)) {
-          fs.renameSync(src, dest);
-          stems[stem] = `/output/${trackInfo.songFolderName}/${stem}.mp3`;
+    try {
+      // Bước 3: Gom các file stem về một thư mục duy nhất mang tên bài hát (không cần thư mục mô hình)
+      const outputBaseDir = path.join(__dirname, "server", "output");
+      const finalFolderName = createUniqueDirectoryName(trackInfo.originalName, outputBaseDir);
+      const finalOutputDir = path.join(outputBaseDir, finalFolderName);
+      fs.mkdirSync(finalOutputDir, { recursive: true });
+
+      const modelDir = path.join(tempOutputDir, model);
+      if (fs.existsSync(modelDir)) {
+        // Demucs thường tạo thêm 1 thư mục con theo tên file đầu vào bên trong thư mục model
+        const modelEntries = fs.readdirSync(modelDir, { withFileTypes: true });
+        const firstDir = modelEntries.find((e) => e.isDirectory());
+        const innerDir = firstDir ? path.join(modelDir, firstDir.name) : modelDir;
+
+        const files = fs.existsSync(innerDir) ? fs.readdirSync(innerDir) : [];
+        console.log('[demucs] Found output files:', files);
+
+        for (const f of files) {
+          const src = path.join(innerDir, f);
+          const dest = path.join(finalOutputDir, f); // Không đổi tên, chỉ di chuyển
+          try {
+            await renameWithRetry(src, dest);
+          } catch {
+            try {
+              fs.copyFileSync(src, dest);
+              try { fs.unlinkSync(src); } catch (unlinkErr) { console.warn('[demucs] unlink fallback failed:', unlinkErr?.message); }
+            } catch (copyErr) {
+              console.error('[demucs] Failed to move/copy file:', copyErr);
+            }
+          }
         }
-      });
-      // Xóa thư mục model sau khi move file
-      fs.rmSync(path.join(trackInfo.outputDir, model), {
-        recursive: true,
-        force: true,
-      });
-      console.log(`Tách nhạc thành công cho: ${trackInfo.songFolderName} (${trackId})`);
+      } else {
+        console.error(`[demucs] Error: Model directory not found: ${modelDir}`);
+      }
+
+      // Lưu tên thư mục cuối vào uploadedTracks để các API khác nhận diện đúng
+      uploadedTracks[trackId].songFolderName = finalFolderName;
+
+      // Dọn dẹp thư mục tạm
+      try { fs.rmSync(tempOutputDir, { recursive: true, force: true }); } catch (rmErr) { console.warn('[demucs] cleanup temp dir failed:', rmErr?.message); }
+
+      console.log(`[demucs] Success! Finalized output folder: ${finalFolderName}`);
+    } catch (finalErr) {
+      console.error(`[demucs] Finalization error:`, finalErr);
+      demucsProgress[trackId].error = "Tách nhạc thành công nhưng không thể hoàn tất di chuyển file.";
     }
   });
 
   // Trả về response ngay lập tức
-  res.json({
-    message: "Bắt đầu tách nhạc",
-    trackId,
-  });
+  res.json({ message: "Bắt đầu tách nhạc", trackId });
 });
 
 // API lấy tiến trình tách nhạc
@@ -309,17 +268,25 @@ router.get("/stems", (req, res) => {
     const songDir = path.join(outputBaseDir, songFolderName);
     if (fs.statSync(songDir).isDirectory()) {
       const stems = {};
-      ["vocals", "drums", "bass", "other"].forEach((stem) => {
-        const stemFile = path.join(songDir, `${stem}.mp3`);
-        if (fs.existsSync(stemFile)) {
-          const stats = fs.statSync(stemFile);
-          stems[stem] = {
-            url: `/output/${songFolderName}/${stem}.mp3`,
-            size: stats.size,
-            modified: stats.mtime,
-          };
+      // List all audio files exactly as named (no canonical remapping)
+      const files = fs.readdirSync(songDir);
+      for (const f of files) {
+        if (!/\.(mp3|wav|flac|m4a)$/i.test(f)) continue;
+        const base = f.replace(/\.[^.]+$/, '');
+        const filePath = path.join(songDir, f);
+        const stats = fs.statSync(filePath);
+        // Ensure unique keys if duplicates somehow occur
+        let key = base;
+        let suffix = 1;
+        while (stems[key]) {
+          key = `${base}_${suffix++}`;
         }
-      });
+        stems[key] = {
+          url: `/output/${songFolderName}/${encodeURIComponent(f)}`,
+          size: stats.size,
+          modified: stats.mtime,
+        };
+      }
 
       if (Object.keys(stems).length > 0) {
         // Tìm trackId tương ứng từ uploadedTracks
@@ -343,9 +310,11 @@ router.get("/stems", (req, res) => {
         }
 
         songs.push({
-          song: originalName,
           trackId: trackId,
-          songFolderName: songFolderName, // Thêm tên folder để dễ quản lý
+          song: originalName,
+          displayName: originalName,
+          songFolderName: songFolderName,
+          folderName: songFolderName,
           stems,
           stemCount: Object.keys(stems).length,
           createdAt: Math.min(
@@ -673,3 +642,5 @@ function formatFileSize(bytes) {
 }
 
 export default router;
+// Export utility for reuse (e.g., Whisper router)
+export { createUniqueDirectoryName };
