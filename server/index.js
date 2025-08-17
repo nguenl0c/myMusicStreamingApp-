@@ -36,6 +36,8 @@ app.use('/output', express.static(path.join(__dirname, 'server', 'output')));
 app.use('/stems', express.static(path.join(__dirname, 'server', 'output')));
 app.use('/mixed', express.static(path.join(__dirname, 'server', 'output')));
 app.use('/mixer', express.static(path.join(__dirname, 'server', 'mixer')));
+// Static route riêng cho karaoke sessions
+app.use('/karaoke', express.static(path.join(__dirname, 'server', 'karaoke')));
 
 // Tạo chuỗi ngẫu nhiên cho state
 const generateRandomString = (length) => {

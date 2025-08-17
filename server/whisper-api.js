@@ -4,6 +4,8 @@ import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import process from "process";
+import multer from "multer";
+import { v4 as uuidv4 } from "uuid";
 
 /**
  * Tạo một router Express cho các tác vụ của Whisper.
@@ -15,6 +17,126 @@ export default function createWhisperRouter(uploadedTracks, createUniqueDirector
     const router = express.Router();
     const __dirname = path.resolve();
     const whisperProgress = {}; // Trạng thái của Whisper chỉ được quản lý ở đây
+    const pythonCmd = process.platform === "win32" ? "python" : "python3";
+
+    // Upload handler cho karaoke luồng độc lập
+    const upload = multer({ dest: path.join(__dirname, "server", "uploads") });
+    const karaokeSessions = {}; // { [sessionId]: { status, log, done, error, resultPaths } }
+
+    // API mới: Tạo phiên karaoke độc lập từ 2 file người dùng upload
+    // POST /api/karaoke/create (multipart/form-data: vocalTrack, instrumentalTrack)
+    router.post("/karaoke/create", upload.fields([
+        { name: 'vocalTrack', maxCount: 1 },
+        { name: 'instrumentalTrack', maxCount: 1 },
+    ]), async (req, res) => {
+        try {
+            const vocalFile = req.files?.vocalTrack?.[0];
+            const instrumentalFile = req.files?.instrumentalTrack?.[0];
+            if (!vocalFile || !instrumentalFile) {
+                return res.status(400).json({ error: "Thiếu file. Cần cả vocalTrack và instrumentalTrack." });
+            }
+
+            const sessionId = `karaoke_session_${uuidv4()}`;
+            const sessionDir = path.join(__dirname, "server", "karaoke", sessionId);
+            fs.mkdirSync(sessionDir, { recursive: true });
+
+            // Đặt tên file đích cố định, giữ extension gốc nếu có
+            const vocalExt = path.extname(vocalFile.originalname) || path.extname(vocalFile.filename) || '.mp3';
+            const instrumentalExt = path.extname(instrumentalFile.originalname) || path.extname(instrumentalFile.filename) || '.mp3';
+            const vocalDest = path.join(sessionDir, `vocals${vocalExt}`);
+            const instrumentalDest = path.join(sessionDir, `instrumental${instrumentalExt}`);
+
+            fs.renameSync(vocalFile.path, vocalDest);
+            fs.renameSync(instrumentalFile.path, instrumentalDest);
+
+            // Gọi script python để tạo lyrics.json
+            const scriptPath = path.join(__dirname, 'server', 'python', 'karaoke.py');
+            const args = [
+                scriptPath,
+                '--input', vocalDest,
+                '--output_dir', sessionDir,
+                '--model', (process.env.WHISPER_DEFAULT_MODEL || 'small').toLowerCase(),
+                '--formats', 'json',
+            ];
+            if (process.env.WHISPER_DEVICE) {
+                args.push('--device', process.env.WHISPER_DEVICE);
+            }
+
+            karaokeSessions[sessionId] = {
+                status: 'starting', log: '', done: false, error: null,
+                sessionId, resultPaths: null, startedAt: Date.now(), updatedAt: Date.now()
+            };
+
+            const child = spawn(pythonCmd, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+            child.stdout.on('data', (data) => {
+                const output = data.toString().trim();
+                if (output.startsWith('{') && output.endsWith('}')) {
+                    try {
+                        const parsed = JSON.parse(output);
+                        karaokeSessions[sessionId].resultPaths = parsed?.files || null;
+                    } catch {
+                        // ignore
+                    }
+                }
+            });
+            child.stderr.on('data', (data) => {
+                const line = data.toString();
+                const sess = karaokeSessions[sessionId];
+                if (sess) {
+                    sess.log += line;
+                    const lower = line.toLowerCase();
+                    if (lower.includes('download') && lower.includes('model')) sess.status = 'downloading';
+                    else if (sess.status !== 'downloading') sess.status = 'processing';
+                    sess.updatedAt = Date.now();
+                }
+            });
+            child.on('close', (code) => {
+                const sess = karaokeSessions[sessionId];
+                if (!sess) return;
+                sess.done = true;
+                sess.updatedAt = Date.now();
+                sess.doneAt = Date.now();
+                if (code !== 0) {
+                    sess.status = 'error';
+                    const logLower = (sess.log || '').toLowerCase();
+                    if (logLower.includes('memoryerror') || logLower.includes('out of memory')) {
+                        sess.error = 'Whisper hết bộ nhớ khi tải model. Hãy thử model nhỏ hơn.';
+                    } else {
+                        sess.error = `Xử lý karaoke thất bại (exit code: ${code})`;
+                    }
+                } else {
+                    sess.status = 'success';
+                }
+            });
+
+            const instrumentalUrl = `/karaoke/${encodeURIComponent(sessionId)}/${encodeURIComponent(path.basename(instrumentalDest))}`;
+            return res.status(202).json({ sessionId, instrumentalUrl });
+        } catch (err) {
+            console.error('[karaoke/create] error:', err);
+            return res.status(500).json({ error: 'Không thể tạo phiên karaoke', detail: err?.message });
+        }
+    });
+
+    // API mới: Lấy trạng thái phiên karaoke
+    router.get('/karaoke/status/:sessionId', (req, res) => {
+        const { sessionId } = req.params;
+        const s = karaokeSessions[sessionId];
+        if (!s) return res.json({ status: 'unknown', done: false });
+        res.json(s);
+    });
+
+    // Endpoint lấy lyrics cho karaoke session độc lập
+    // GET /api/karaoke/lyrics/:sessionId -> trả file lyrics.json
+    router.get('/karaoke/lyrics/:sessionId', async (req, res) => {
+        const { sessionId } = req.params;
+        const folder = path.join(__dirname, 'server', 'karaoke', sessionId);
+        const jsonPath = path.join(folder, 'lyrics.json');
+        if (fs.existsSync(jsonPath)) {
+            res.setHeader('Content-Type', 'application/json');
+            return res.sendFile(jsonPath);
+        }
+        return res.status(404).json({ error: 'Không tìm thấy lyrics.json cho session này.' });
+    });
 
     /**
      * API: Bắt đầu quá trình trích xuất lời bài hát (transcribe).
@@ -28,7 +150,7 @@ export default function createWhisperRouter(uploadedTracks, createUniqueDirector
             return res.status(400).json({ error: "Thiếu trackId." });
         }
 
-        const pythonCmd = process.platform === "win32" ? "python" : "python3";
+    // đã khai báo pythonCmd phía trên
         const envDefaultModel = process.env.WHISPER_DEFAULT_MODEL;
         const requestedModel = (model || envDefaultModel || 'small').toLowerCase();
         const allowedModels = new Set(['large-v3', 'large-v2', 'medium', 'small', 'base', 'tiny', 'large-v3-turbo']);

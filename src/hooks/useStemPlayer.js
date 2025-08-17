@@ -1,6 +1,6 @@
 //src/hooks/useStemPlayer.js
 //Quản lý phát nhạc Stem
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 export function useStemPlayer() {
     const [selectedStems, setSelectedStems] = useState({});
@@ -11,7 +11,7 @@ export function useStemPlayer() {
     const audioRefs = useRef({});
     const progressInterval = useRef(null);
 
-    const stopAllAudio = () => {
+    const stopAllAudio = useCallback(() => {
         Object.values(audioRefs.current).forEach((audio) => {
             if (audio) {
                 audio.pause();
@@ -22,10 +22,10 @@ export function useStemPlayer() {
         if (progressInterval.current) {
             clearInterval(progressInterval.current);
         }
-    };
+    }, []);
 
     const playAllSelected = () => {
-        stopAllAudio(); // Dừng trước khi phát mới
+        // Hàm này giữ nguyên cho các chức năng cũ
         const stemsToPlay = Object.values(selectedStems)
             .map((stem) => audioRefs.current[stem.key])
             .filter(Boolean);
@@ -49,27 +49,86 @@ export function useStemPlayer() {
         }, 100);
     };
 
+    // THÊM MỚI: Hàm chuyên dụng cho Karaoke
+    // Chức năng: Tự động tải, chọn và phát tất cả các stem của một bài hát.
+    const loadAndPlayAllStems = useCallback((stemsData) => {
+        stopAllAudio(); // Dừng mọi thứ đang phát
+
+    const newSelectedStems = {};
+    const urls = Object.values(stemsData).map(stemInfo => stemInfo.url);
+
+        // Tạo các audio element mới
+        urls.forEach(url => {
+            const key = url; // Dùng url làm key duy nhất
+            // Bảo đảm URL tuyệt đối khi đang chạy trên Vite (5180)
+            const fullUrl = /^https?:\/\//i.test(url) ? url : `http://localhost:5000${url}`;
+            newSelectedStems[key] = { key, url: fullUrl };
+            if (!audioRefs.current[key]) {
+                const audio = new Audio(fullUrl);
+                audioRefs.current[key] = audio;
+            }
+        });
+
+        setSelectedStems(newSelectedStems);
+
+        // Chờ một chút để các audio element được tạo và bắt đầu tải metadata
+        setTimeout(() => {
+            const audiosToPlay = Object.values(newSelectedStems).map(s => audioRefs.current[s.key]);
+
+            // Đồng bộ và phát
+            const playPromises = audiosToPlay.map(audio => audio.play());
+
+            Promise.all(playPromises).then(() => {
+                setIsPlaying(true);
+                progressInterval.current = setInterval(() => {
+                    const referenceAudio = audiosToPlay[0];
+                    if (referenceAudio) {
+                        setMasterCurrentTime(referenceAudio.currentTime);
+                        const maxDuration = Math.max(...audiosToPlay.map(a => a.duration || 0));
+                        setMasterDuration(maxDuration);
+                        if (referenceAudio.ended) {
+                            stopAllAudio();
+                            setMasterCurrentTime(0);
+                        }
+                    }
+                }, 100);
+            }).catch(e => console.error("Lỗi khi phát audio:", e));
+        }, 200); // Đợi 200ms
+
+    }, [stopAllAudio]);
+
+    // THÊM MỚI: Hàm cleanup để KaraokeView có thể gọi
+    const cleanup = useCallback(() => {
+        stopAllAudio();
+        setSelectedStems({});
+    }, [stopAllAudio]);
+
+
     const seekAll = (time) => {
-        Object.values(selectedStems).forEach((stem) => {
-            const audio = audioRefs.current[stem.key];
+        Object.values(audioRefs.current).forEach((audio) => {
             if (audio) audio.currentTime = time;
         });
         setMasterCurrentTime(time);
     };
 
-    // Cập nhật duration khi selection thay đổi
+    // useEffect này giữ nguyên
     useEffect(() => {
         const audioElements = Object.values(selectedStems)
             .map((stem) => audioRefs.current[stem.key])
             .filter(Boolean);
         if (audioElements.length > 0) {
-            // Chờ metadata load xong
-            setTimeout(() => {
+            const firstAudio = audioElements[0];
+            const setDur = () => {
                 const maxDuration = Math.max(
                     ...audioElements.map((audio) => audio.duration || 0)
                 );
-                setMasterDuration(maxDuration);
-            }, 100);
+                if (isFinite(maxDuration)) setMasterDuration(maxDuration);
+            }
+            if (firstAudio.readyState > 0) {
+                setDur();
+            } else {
+                firstAudio.addEventListener('loadedmetadata', setDur);
+            }
         } else {
             setMasterDuration(0);
         }
@@ -81,9 +140,9 @@ export function useStemPlayer() {
         setSelectedStems((prev) => {
             const newSelected = { ...prev };
             if (newSelected[key]) {
-                delete newSelected[key]; // Deselect
+                delete newSelected[key];
             } else {
-                newSelected[key] = { key, song: song.song, type: stemType, url }; // Select
+                newSelected[key] = { key, song: song.song, type: stemType, url };
             }
             return newSelected;
         });
@@ -94,10 +153,13 @@ export function useStemPlayer() {
         masterCurrentTime,
         masterDuration,
         isPlaying,
-        audioRefs, // Component vẫn cần ref để gán   vào thẻ audio
+        audioRefs,
         handleSelectStem,
         playAllSelected,
         stopAllAudio,
         seekAll,
+        // Trả về 2 hàm mới
+        loadAndPlayAllStems,
+        cleanup,
     };
 }
