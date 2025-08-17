@@ -1,47 +1,63 @@
-// src/components/mixer/KaraokeView.jsx
+// src/components/karaoke/KaraokeView.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { fetchLyrics, saveLyrics } from '../../services/mixerApi';
-import { useStemPlayer } from '../../hooks/useStemPlayer'; // Tái sử dụng hook player
+import { fetchLyrics } from '../../services/mixerApi';
+import { useStemPlayer } from '../../hooks/useStemPlayer';
 
-// Hàm tiện ích để phân tích nội dung file .srt
-const parseSrt = (srtText) => {
-    if (!srtText || typeof srtText !== 'string') return [];
-    const lines = srtText.trim().split(/\r?\n/);
-    const entries = [];
-    let currentEntry = {};
+/**
+ * LÝ THUYẾT & CHỨC NĂNG: Component `Word`
+ * - Chức năng: Component này chịu trách nhiệm hiển thị một từ duy nhất trong câu hát.
+ * - Lý thuyết: Nó nhận vào thông tin của từ (chữ, thời gian bắt đầu, kết thúc) và
+ * thời gian hiện tại của bài hát. Dựa vào đó, nó tính toán xem từ này đã được hát qua,
+ * đang được hát, hay sắp được hát.
+ * - Hiệu ứng "chạy chữ":
+ * 1. Dùng 2 thẻ `<span>` chồng lên nhau bằng `position: absolute`.
+ * 2. `<span>` nền (màu xám) luôn hiển thị đầy đủ chữ.
+ * 3. `<span>` nổi (màu vàng) có `overflow: hidden` và chiều rộng (width) được
+ * tính toán động. Khi từ đang được hát, `width` sẽ tăng dần từ 0% đến 100%,
+ * tạo ra hiệu ứng màu vàng tô dần lên chữ xám.
+ */
+const Word = ({ wordData, currentTime }) => {
+    const { word, start, end } = wordData;
 
-    const timeToSeconds = (timeStr) => {
-        const [h, m, s] = timeStr.split(':');
-        const [sec, ms] = s.split(',');
-        return parseInt(h, 10) * 3600 + parseInt(m, 10) * 60 + parseInt(sec, 10) + parseInt(ms, 10) / 1000;
-    };
+    // Xác định trạng thái của từ
+    const isPast = currentTime >= end;
+    const isActive = currentTime >= start && currentTime < end;
 
-    for (let i = 0; i < lines.length; i++) {
-        if (!isNaN(parseInt(lines[i], 10)) && lines[i + 1]?.includes('-->')) {
-            if (currentEntry.text) entries.push(currentEntry);
-            currentEntry = {
-                id: parseInt(lines[i], 10),
-                startTime: timeToSeconds(lines[i + 1].split(' --> ')[0]),
-                endTime: timeToSeconds(lines[i + 1].split(' --> ')[1]),
-                text: ''
-            };
-            i++;
-        } else if (currentEntry.id && lines[i].trim() !== '') {
-            currentEntry.text += (currentEntry.text ? '\n' : '') + lines[i];
-        }
+    // Tính toán tiến độ (progress) cho từ đang được hát
+    let progress = 0;
+    if (isActive) {
+        const duration = end - start;
+        // Tránh chia cho 0
+        progress = duration > 0 ? ((currentTime - start) / duration) * 100 : 100;
     }
-    if (currentEntry.text) entries.push(currentEntry);
-    return entries;
+
+    return (
+        // `whitespace-nowrap` để các từ trong một dòng không bị xuống hàng
+        <span className="relative inline-block mr-2 whitespace-nowrap">
+            {/* Lớp nền màu xám, luôn hiển thị */}
+            <span className="absolute inset-0 text-gray-400">{word}</span>
+            {/* Lớp màu vàng "chạy chữ", chiều rộng được tính toán động */}
+            <span
+                className="absolute inset-0 text-yellow-300 overflow-hidden"
+                style={{ width: isPast ? '100%' : `${progress}%` }}
+            >
+                {word}
+            </span>
+            {/* Lớp ẩn này chỉ dùng để giữ đúng kích thước của container */}
+            <span className="opacity-0">{word}</span>
+        </span>
+    );
 };
 
 
 export default function KaraokeView({ song, onClose }) {
+    // State `lyrics` giờ đây sẽ lưu mảng các object từ file JSON
     const [lyrics, setLyrics] = useState([]);
-    const [rawSrt, setRawSrt] = useState('');
     const [isLoading, setIsLoading] = useState(true);
-    const [isEditing, setIsEditing] = useState(false);
-    const [editedSrt, setEditedSrt] = useState('');
     const [error, setError] = useState(null);
+
+    // Bỏ các state liên quan đến chỉnh sửa SRT vì việc sửa JSON phức tạp hơn
+    // và không nằm trong phạm vi yêu cầu hiện tại.
 
     const player = useStemPlayer();
     const activeLineRef = useRef(null);
@@ -52,17 +68,29 @@ export default function KaraokeView({ song, onClose }) {
             try {
                 setIsLoading(true);
                 setError(null);
-                const srtContent = await fetchLyrics(song.songFolderName);
-                setRawSrt(srtContent);
-                setEditedSrt(srtContent);
-                setLyrics(parseSrt(srtContent));
+                // `fetchLyrics` giờ sẽ tự động parse JSON nếu nhận được
+                const lyricData = await fetchLyrics(song.songFolderName);
+
+                // Kiểm tra kiểu dữ liệu trả về để biết đó là JSON mới hay SRT cũ
+                if (Array.isArray(lyricData) && lyricData.length > 0) {
+                    // Nếu là mảng (từ JSON), set state bình thường
+                    setLyrics(lyricData);
+                } else {
+                    // Nếu không phải, có thể là file SRT cũ hoặc file rỗng.
+                    // Thông báo cho người dùng cần trích xuất lại để có hiệu ứng mới.
+                    setError("Không tìm thấy lời bài hát chi tiết. Vui lòng thử 'Trích lời' lại bài hát này để có hiệu ứng karaoke mới.");
+                    setLyrics([]); // Xóa lời cũ nếu có
+                }
             } catch (err) {
                 setError("Không thể tải lời bài hát. Hãy thử trích xuất lại.");
+                console.error("Load lyrics failed:", err);
             } finally {
                 setIsLoading(false);
             }
         };
-        loadLyrics();
+        if (song?.songFolderName) {
+            loadLyrics();
+        }
     }, [song.songFolderName]);
 
     // Tự động cuộn đến dòng đang hát
@@ -75,59 +103,43 @@ export default function KaraokeView({ song, onClose }) {
         }
     }, [player.masterCurrentTime]);
 
-    const handleSave = async () => {
-        try {
-            await saveLyrics(song.songFolderName, editedSrt);
-            setRawSrt(editedSrt);
-            setLyrics(parseSrt(editedSrt));
-            setIsEditing(false);
-        } catch (err) {
-            alert("Lưu thất bại!");
-        }
-    };
 
-    // Tìm dòng lyric hiện tại
-    const activeLine = lyrics.find(line =>
-        player.masterCurrentTime >= line.startTime && player.masterCurrentTime <= line.endTime
+    const currentTime = player.masterCurrentTime;
+    // Tìm index của dòng đang được hát để focus và cuộn
+    const activeLineIndex = lyrics.findIndex(line =>
+        currentTime >= line.start && currentTime <= line.end
     );
 
     return (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="w-11/12 max-w-4xl h-5/6 bg-gray-800 text-white rounded-2xl shadow-2xl flex flex-col p-6">
                 <div className="flex justify-between items-center mb-4 flex-shrink-0">
-                    <h2 className="text-2xl font-bold">{song.song} - Karaoke</h2>
-                    <div>
-                        <button onClick={() => setIsEditing(!isEditing)} className="mr-4 px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700">
-                            {isEditing ? 'Hủy' : 'Chỉnh sửa'}
-                        </button>
-                        <button onClick={onClose} className="px-4 py-2 bg-red-600 rounded-lg hover:bg-red-700">Đóng</button>
-                    </div>
+                    <h2 className="text-2xl font-bold truncate" title={song.song}>{song.song} - Karaoke</h2>
+                    <button onClick={onClose} className="px-4 py-2 bg-red-600 rounded-lg hover:bg-red-700">Đóng</button>
                 </div>
 
                 <div className="flex-grow min-h-0">
-                    {isLoading && <p>Đang tải lời bài hát...</p>}
-                    {error && <p className="text-red-400">{error}</p>}
+                    {isLoading && <div className="flex items-center justify-center h-full">Đang tải lời bài hát...</div>}
+                    {error && <div className="flex items-center justify-center h-full text-red-400 text-center">{error}</div>}
 
-                    {isEditing ? (
-                        <div className="h-full flex flex-col">
-                            <textarea
-                                value={editedSrt}
-                                onChange={(e) => setEditedSrt(e.target.value)}
-                                className="w-full h-full bg-gray-900 text-white p-4 rounded-lg font-mono text-sm"
-                            />
-                            <button onClick={handleSave} className="mt-4 w-full py-2 bg-green-600 rounded-lg hover:bg-green-700">Lưu thay đổi</button>
-                        </div>
-                    ) : (
-                        <div className="h-full overflow-y-auto text-center p-8 scrollbar-thin scrollbar-thumb-gray-600">
-                            {lyrics.map(line => (
+                    {/* Phần hiển thị lời mới */}
+                    {!isLoading && !error && (
+                        <div className="h-full overflow-y-auto text-center p-4 md:p-8 scrollbar-thin scrollbar-thumb-gray-600 flex flex-col justify-center">
+                            {lyrics.map((line, index) => (
                                 <p
-                                    key={line.id}
-                                    ref={activeLine?.id === line.id ? activeLineRef : null}
-                                    className={`text-3xl font-bold transition-all duration-300 p-2
-                                        ${activeLine?.id === line.id ? 'text-yellow-300 scale-110' : 'text-gray-400'}`
+                                    key={index}
+                                    ref={activeLineIndex === index ? activeLineRef : null}
+                                    className={`text-2xl md:text-4xl font-bold transition-all duration-300 p-2 transform
+                                        ${activeLineIndex === index
+                                            ? 'text-yellow-300 scale-110' // Dòng active
+                                            : (index < activeLineIndex ? 'text-gray-500 scale-90' : 'text-gray-300 scale-90') // Dòng đã qua và sắp tới
+                                        }`
                                     }
                                 >
-                                    {line.text}
+                                    {/* Render từng từ bằng component Word */}
+                                    {line.words.map((word, wordIndex) => (
+                                        <Word key={wordIndex} wordData={word} currentTime={currentTime} />
+                                    ))}
                                 </p>
                             ))}
                         </div>

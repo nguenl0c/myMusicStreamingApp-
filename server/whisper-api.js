@@ -7,7 +7,7 @@ import process from "process";
 
 /**
  * Tạo một router Express cho các tác vụ của Whisper.
- * @param {object} uploadedTracks - Object chứa thông tin các track đã upload (được chia sẻ từ module khác).
+ * @param {object} uploadedTracks - Object chứa thông tin các track đã upload.
  * @param {function} createUniqueDirectoryName - Hàm tiện ích để tạo tên thư mục.
  * @returns {express.Router}
  */
@@ -18,27 +18,29 @@ export default function createWhisperRouter(uploadedTracks, createUniqueDirector
 
     /**
      * API: Bắt đầu quá trình trích xuất lời bài hát (transcribe).
+     * ĐÃ ĐƯỢC CẬP NHẬT: Loại bỏ hoàn toàn logic cũ, chỉ sử dụng script karaoke.py.
      */
     router.post("/transcribe/:trackId", async (req, res) => {
         const { trackId } = req.params;
-        const { language, model, engine, stemFile } = (req.body || {});
+        const { language, model, stemFile } = (req.body || {});
 
         if (!trackId) {
-            return res.status(400).json({ error: "Thiếu trackId hoặc folderName." });
+            return res.status(400).json({ error: "Thiếu trackId." });
         }
 
         const pythonCmd = process.platform === "win32" ? "python" : "python3";
         const envDefaultModel = process.env.WHISPER_DEFAULT_MODEL;
         const requestedModel = (model || envDefaultModel || 'small').toLowerCase();
-        const allowedModels = new Set(['large-v3','large-v2','medium','small','base','tiny','large-v3-turbo']);
+        const allowedModels = new Set(['large-v3', 'large-v2', 'medium', 'small', 'base', 'tiny', 'large-v3-turbo']);
         const chosenModel = allowedModels.has(requestedModel) ? requestedModel : 'small';
-        const deviceOverride = process.env.WHISPER_DEVICE; // ví dụ: 'cpu' hoặc 'cuda'
+        const deviceOverride = process.env.WHISPER_DEVICE;
         const outputBaseDir = path.join(__dirname, "server", "output");
         if (!fs.existsSync(outputBaseDir)) fs.mkdirSync(outputBaseDir, { recursive: true });
 
-    let sourceFilePath = null;
-    let finalOutputDir = null;
+        let sourceFilePath = null;
+        let finalOutputDir = null;
 
+        // Logic tìm file và thư mục (không thay đổi)
         if (uploadedTracks[trackId]) {
             const trackInfo = uploadedTracks[trackId];
             if (!trackInfo.songFolderName) {
@@ -46,17 +48,15 @@ export default function createWhisperRouter(uploadedTracks, createUniqueDirector
             }
             finalOutputDir = path.join(outputBaseDir, trackInfo.songFolderName);
             if (!fs.existsSync(finalOutputDir)) fs.mkdirSync(finalOutputDir, { recursive: true });
-            // Bắt buộc phải có stemFile, không còn tự động chọn
             if (!stemFile) {
                 return res.status(400).json({ error: "Vui lòng chọn stem để trích lời (thiếu stemFile)." });
             }
-            // Chặn path traversal
             if (/[\\/]/.test(stemFile) || stemFile.includes("..")) {
                 return res.status(400).json({ error: "stemFile không hợp lệ." });
             }
             const candidate = path.join(finalOutputDir, stemFile);
             if (!fs.existsSync(candidate)) {
-                return res.status(404).json({ error: `Không tìm thấy stem '${stemFile}' trong thư mục bài hát.` });
+                return res.status(404).json({ error: `Không tìm thấy stem '${stemFile}'.` });
             }
             sourceFilePath = candidate;
         } else {
@@ -65,101 +65,101 @@ export default function createWhisperRouter(uploadedTracks, createUniqueDirector
             if (!fs.existsSync(finalOutputDir)) {
                 return res.status(404).json({ error: "Folder bài hát không tồn tại." });
             }
-            // YÊU CẦU: bắt buộc người dùng chọn stem, không tự động chọn
             if (!stemFile) {
                 return res.status(400).json({ error: "Vui lòng chọn stem để trích lời (thiếu stemFile)." });
             }
-            // Chặn path traversal
             if (/[\\/]/.test(stemFile) || stemFile.includes("..")) {
                 return res.status(400).json({ error: "stemFile không hợp lệ." });
             }
             const candidate = path.join(finalOutputDir, stemFile);
             if (!fs.existsSync(candidate)) {
-                return res.status(404).json({ error: `Không tìm thấy stem '${stemFile}' trong thư mục bài hát.` });
+                return res.status(404).json({ error: `Không tìm thấy stem '${stemFile}'.` });
             }
             sourceFilePath = candidate;
         }
 
-        const useStableTs = (typeof engine === 'string' && engine.toLowerCase() === 'stable') || requestedModel.includes('turbo');
+        // **THAY ĐỔI QUAN TRỌNG**: Xóa bỏ hoàn toàn khối if/else và luồng xử lý cũ.
+        // Giờ đây, chúng ta luôn luôn gọi script karaoke.py.
+        const scriptPath = path.join(__dirname, 'server', 'python', 'karaoke.py');
+        const args = [
+            scriptPath,
+            '--input', sourceFilePath,
+            '--output_dir', finalOutputDir,
+            '--model', chosenModel,
+            '--formats', 'json', // Luôn yêu cầu định dạng JSON
+        ];
+        if (language && language !== 'auto') args.push('--language', language);
+        if (deviceOverride) args.push('--device', deviceOverride);
 
-        let child;
-        if (useStableTs) {
-            const scriptPath = path.join(__dirname, 'server', 'python', 'karaoke.py');
-            const args = [
-                scriptPath,
-                '--input', sourceFilePath,
-                '--output_dir', finalOutputDir,
-                '--model', chosenModel,
-                '--formats', 'srt',
-            ];
-            if (language && language !== 'auto') args.push('--language', language);
-            if (deviceOverride) args.push('--device', deviceOverride);
-            console.log(`[stable-ts] Running: ${pythonCmd} ${args.join(" ")}`);
-            whisperProgress[trackId] = {
-                status: 'starting', engine: 'stable-ts',
-                model: chosenModel,
-                language: language || 'auto',
-                device: deviceOverride || 'auto',
-                log: '', done: false, error: null,
-                startedAt: Date.now(), updatedAt: Date.now(),
-            };
-            child = spawn(pythonCmd, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
-        } else {
-            const whisperArgs = [
-                sourceFilePath,
-                '--model', chosenModel,
-                '--output_format', 'srt',
-                '--output_dir', finalOutputDir,
-            ];
-            if (language && language !== 'auto') whisperArgs.push('--language', language);
-            if (deviceOverride) whisperArgs.push('--device', deviceOverride);
-            console.log(`[whisper] Running: ${pythonCmd} -m whisper ${whisperArgs.join(" ")}`);
-            whisperProgress[trackId] = {
-                status: 'starting', engine: 'whisper-cli',
-                model: chosenModel,
-                language: language || 'auto',
-                device: deviceOverride || 'auto',
-                log: '', done: false, error: null,
-                startedAt: Date.now(), updatedAt: Date.now(),
-            };
-            child = spawn(pythonCmd, ['-m', 'whisper', ...whisperArgs], { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
-        }
+        console.log(`[Karaoke System] Running: ${pythonCmd} ${args.join(" ")}`);
+
+        whisperProgress[trackId] = {
+            status: 'starting', engine: 'stable-ts (karaoke.py)',
+            model: chosenModel,
+            language: language || 'auto',
+            device: deviceOverride || 'auto',
+            log: '', done: false, error: null, resultPaths: null,
+            startedAt: Date.now(), updatedAt: Date.now(),
+        };
+
+        const child = spawn(pythonCmd, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
+
+        // Logic xử lý output từ tiến trình con (không thay đổi)
+        child.stdout.on('data', (data) => {
+            const output = data.toString().trim();
+            if (output.startsWith('{') && output.endsWith('}')) {
+                try {
+                    const parsed = JSON.parse(output);
+                    console.log('[Karaoke System] Python script finished successfully:', parsed);
+                    if (whisperProgress[trackId]) {
+                        whisperProgress[trackId].resultPaths = parsed;
+                    }
+                } catch (e) {
+                    console.error('Could not parse JSON from python stdout:', output);
+                }
+            } else {
+                console.log('[python stdout]', output);
+            }
+        });
 
         child.stderr.on('data', (data) => {
             const logLine = data.toString();
-            console.log('[whisper stderr]', logLine.trim());
-            whisperProgress[trackId].log += logLine;
-            // Heuristic: nếu log chứa download thì coi là đang tải model
-            const lower = logLine.toLowerCase();
-            if (lower.includes('download') && lower.includes('model')) {
-                whisperProgress[trackId].status = 'downloading';
-            } else {
-                whisperProgress[trackId].status = 'processing';
+            console.log('[python stderr]', logLine.trim());
+            if (whisperProgress[trackId]) {
+                whisperProgress[trackId].log += logLine;
+                const lower = logLine.toLowerCase();
+                if (lower.includes('download') && lower.includes('model')) {
+                    whisperProgress[trackId].status = 'downloading';
+                } else if (whisperProgress[trackId].status !== 'downloading') {
+                    whisperProgress[trackId].status = 'processing';
+                }
+                whisperProgress[trackId].updatedAt = Date.now();
             }
-            whisperProgress[trackId].updatedAt = Date.now();
         });
 
         child.on('close', (code) => {
-            whisperProgress[trackId].done = true;
-            if (code !== 0) {
-                whisperProgress[trackId].status = 'error';
-                const log = (whisperProgress[trackId].log || '').toLowerCase();
-                if (log.includes('memoryerror') || log.includes('out of memory')) {
-                    whisperProgress[trackId].error = `Whisper hết bộ nhớ khi tải model '${chosenModel}'. Hãy thử model nhỏ hơn (medium/small/base/tiny) hoặc đặt biến môi trường WHISPER_DEFAULT_MODEL=small. Nếu dùng GPU bị thiếu VRAM, có thể đặt WHISPER_DEVICE=cpu.`;
+            if (whisperProgress[trackId]) {
+                whisperProgress[trackId].done = true;
+                if (code !== 0) {
+                    whisperProgress[trackId].status = 'error';
+                    const log = (whisperProgress[trackId].log || '').toLowerCase();
+                    if (log.includes('memoryerror') || log.includes('out of memory')) {
+                        whisperProgress[trackId].error = `Whisper hết bộ nhớ khi tải model '${chosenModel}'. Hãy thử model nhỏ hơn.`;
+                    } else {
+                        whisperProgress[trackId].error = `Whisper thất bại (exit code: ${code}).`;
+                    }
                 } else {
-                    whisperProgress[trackId].error = `Whisper thất bại (exit code: ${code}).`;
+                    whisperProgress[trackId].status = 'success';
                 }
-            } else {
-                whisperProgress[trackId].status = 'success';
+                whisperProgress[trackId].updatedAt = Date.now();
+                whisperProgress[trackId].doneAt = Date.now();
             }
-            whisperProgress[trackId].updatedAt = Date.now();
-            whisperProgress[trackId].doneAt = Date.now();
         });
 
         res.status(202).json({ message: "Bắt đầu trích xuất lời bài hát.", trackId });
     });
 
-    // API: Lấy tiến trình trích xuất lời
+    // API lấy tiến trình (không đổi)
     router.get('/transcribe-progress/:trackId', (req, res) => {
         const { trackId } = req.params;
         const status = whisperProgress[trackId];
@@ -167,44 +167,42 @@ export default function createWhisperRouter(uploadedTracks, createUniqueDirector
         res.json(status);
     });
 
-    // API: Kiểm tra môi trường Whisper/PyTorch (CUDA/GPU)
-    router.get('/whisper-env', async (req, res) => {
-        const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-        const pyCode = `import json\ntry:\n    import torch\n    info = {\n        'torch': getattr(torch, '__version__', None),\n        'cuda_version': getattr(getattr(torch, 'version', None), 'cuda', None),\n        'cuda_is_available': torch.cuda.is_available(),\n    }\n    if info['cuda_is_available']:\n        try:\n            info['gpu_count'] = torch.cuda.device_count()\n            info['gpu_name'] = torch.cuda.get_device_name(0)\n            info['gpu_capability'] = torch.cuda.get_device_capability(0)\n        except Exception as e:\n            info['gpu_error'] = str(e)\nexcept Exception as e:\n    info = {'error': 'torch_import_failed', 'detail': str(e)}\nprint(json.dumps(info))`;
+    // API lấy lời bài hát (không đổi, đã được đơn giản hóa ở phiên trước)
+    router.get("/lyrics/:songFolderName", async (req, res) => {
+        const { songFolderName } = req.params;
+        const folder = path.join(__dirname, "server", "output", songFolderName);
+        const jsonPath = path.join(folder, 'lyrics.json');
 
-        const child = spawn(pythonCmd, ['-c', pyCode], { windowsHide: true });
-        let out = '';
-        let err = '';
-        child.stdout.on('data', d => out += d.toString());
-        child.stderr.on('data', d => err += d.toString());
-        child.on('close', (code) => {
-            if (code !== 0) {
-                return res.status(500).json({ error: 'python_exec_failed', detail: err.trim() || `exit ${code}` });
-            }
-            try {
-                const info = JSON.parse(out);
-                return res.json(info);
-            } catch (e) {
-                return res.status(500).json({ error: 'parse_failed', raw: out.trim(), detail: String(e) });
-            }
-        });
+        if (fs.existsSync(jsonPath)) {
+            res.setHeader('Content-Type', 'application/json');
+            return res.sendFile(jsonPath);
+        } else {
+            return res.status(404).json({
+                error: "Không tìm thấy file lời bài hát (lyrics.json).",
+                message: "Vui lòng chạy lại chức năng 'Trích lời' cho bài hát này để tạo file lời chi tiết."
+            });
+        }
     });
+
 
     /**
      * API: Lấy về lời bài hát đã được trích xuất.
+     * ĐÃ ĐƯỢC ĐƠN GIẢN HÓA: Chỉ tìm và trả về file `lyrics.json`.
      */
     router.get("/lyrics/:songFolderName", async (req, res) => {
         const { songFolderName } = req.params;
         const folder = path.join(__dirname, "server", "output", songFolderName);
-        if (!fs.existsSync(folder)) {
-            return res.status(404).json({ error: "Folder bài hát không tồn tại." });
+        const jsonPath = path.join(folder, 'lyrics.json');
+
+        if (fs.existsSync(jsonPath)) {
+            res.setHeader('Content-Type', 'application/json');
+            return res.sendFile(jsonPath);
+        } else {
+            return res.status(404).json({
+                error: "Không tìm thấy file lời bài hát (lyrics.json).",
+                message: "Vui lòng chạy lại chức năng 'Trích lời' cho bài hát này để tạo file lời chi tiết."
+            });
         }
-        // Ưu tiên lyrics.srt, sau đó bất kỳ .srt nào
-        const files = fs.readdirSync(folder);
-        let srtFile = files.find(f => f.toLowerCase() === 'lyrics.srt');
-        if (!srtFile) srtFile = files.find(f => /\.srt$/i.test(f));
-        if (!srtFile) return res.status(404).json({ error: "Không tìm thấy file lời bài hát." });
-        return res.sendFile(path.join(folder, srtFile));
     });
 
     /**
