@@ -115,7 +115,7 @@ export default function createWhisperRouter(uploadedTracks, createUniqueDirector
                         whisperProgress[trackId].resultPaths = parsed;
                     }
                 } catch (e) {
-                    console.error('Could not parse JSON from python stdout:', output);
+                    console.error('Could not parse JSON from python stdout:', output, e);
                 }
             } else {
                 console.log('[python stdout]', output);
