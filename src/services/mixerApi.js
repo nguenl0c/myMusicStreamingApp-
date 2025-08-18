@@ -1,28 +1,24 @@
 import axios from 'axios';
 
+// API chỉ dành cho luồng Mixer/Stem tách nhạc
 const API_URL = 'http://localhost:5000/api';
+const api = axios.create({ baseURL: API_URL });
 
-// Tạo một instance của axios để có thể cấu hình chung
-const api = axios.create({
-    baseURL: API_URL,
-});
-
-// Stems
+// Stems (Mixer)
 export const fetchStems = () => api.get('/stems');
 export const deleteStemTrack = (trackId) => api.delete(`/stems/${trackId}`);
 
-// Mixed Songs
+// Mixed Songs (Mixer)
 export const fetchMixedSongs = () => api.get('/mixed-songs');
 export const deleteMixedSong = (filename) => api.delete(`/mixed-songs/${encodeURIComponent(filename)}`);
 
-// Separation Process
+// Separation Process (Mixer)
 export const uploadAudio = (file) => {
     const formData = new FormData();
     formData.append('audio', file);
-    return api.post('/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    return api.post('/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 };
+
 export const startDemucs = (trackId, options = {}) => {
     const payload = { trackId };
     const { model, twoStems, mp3Bitrate, mp3Preset } = options || {};
@@ -32,45 +28,8 @@ export const startDemucs = (trackId, options = {}) => {
     if (mp3Preset) payload.mp3Preset = mp3Preset; // e.g., 2 (best) ... 7 (fastest)
     return api.post('/start-demucs', payload);
 };
+
 export const getDemucsProgress = (trackId) => api.get(`/demucs-progress/${trackId}`);
 
-// Mixing
+// Mixing (Mixer)
 export const mixStems = (stemPaths, songName) => api.post('/mix', { stemPaths, songName });
-
-// --- CÁC HÀM MỚI CHO WHISPER ---
-
-/**
- * Bắt đầu quá trình trích xuất lời bài hát cho một track.
- * @param {string} trackId - ID của track.
- * @returns {Promise}
- */
-export const startTranscription = (trackId, options = {}) => {
-    const payload = {};
-    if (options.model) payload.model = options.model;
-    if (options.language) payload.language = options.language;
-    if (options.stemFile) payload.stemFile = options.stemFile; // ví dụ: 'vocals.mp3'
-    if (options.engine) payload.engine = options.engine; // optional: stable or whisper-cli
-    return api.post(`/transcribe/${trackId}`, payload);
-};
-
-/**
- * Lấy nội dung file lời bài hát (.srt).
- * @param {string} songFolderName - Tên thư mục của bài hát.
- * @returns {Promise<string>} - Trả về nội dung của file srt dưới dạng text.
- */
-export const fetchLyrics = async (songFolderName) => {
-    const response = await api.get(`/lyrics/${encodeURIComponent(songFolderName)}`, {
-        responseType: 'text' // Quan trọng: để nhận về dạng text thô
-    });
-    return response.data;
-};
-
-/**
- * Lưu lại nội dung lời bài hát đã được chỉnh sửa.
- * @param {string} songFolderName - Tên thư mục của bài hát.
- * @param {string} lyricsContent - Nội dung file .srt mới.
- * @returns {Promise}
- */
-export const saveLyrics = (songFolderName, lyricsContent) => {
-    return api.post(`/lyrics/${encodeURIComponent(songFolderName)}`, { lyricsContent });
-};

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import KaraokePlayer from '../components/karaoke/KaraokePlayer';
 
 export default function KaraokeCreator() {
@@ -7,6 +7,28 @@ export default function KaraokeCreator() {
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
   const [session, setSession] = useState(null); // { sessionId, instrumentalUrl }
+  // Danh sách sessions hiện có
+  const [sessions, setSessions] = useState([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [sessionsError, setSessionsError] = useState(null);
+  const [active, setActive] = useState(null); // { sessionId, instrumentalUrl }
+
+  const loadSessions = async () => {
+    setLoadingSessions(true);
+    setSessionsError(null);
+    try {
+      const res = await fetch('http://localhost:5000/api/karaoke/sessions');
+      const data = await res.json();
+      setSessions(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setSessionsError(e.message || 'Không thể tải danh sách');
+    } finally {
+      setLoadingSessions(false);
+    }
+  };
+
+  useEffect(() => { loadSessions(); }, []);
 
   const handleStart = async () => {
     setError(null);
@@ -35,12 +57,19 @@ export default function KaraokeCreator() {
     }
   };
 
-  if (session) {
+  const playerData = session || active;
+  const handleClosePlayer = () => {
+    if (session) { setSession(null); setStatus('idle'); }
+    if (active) setActive(null);
+    loadSessions();
+  };
+
+  if (playerData) {
     return (
       <KaraokePlayer
-        sessionId={session.sessionId}
-        instrumentalUrl={session.instrumentalUrl}
-        onClose={() => { setSession(null); setStatus('idle'); }}
+        sessionId={playerData.sessionId}
+        instrumentalUrl={playerData.instrumentalUrl}
+        onClose={handleClosePlayer}
       />
     );
   }
@@ -70,6 +99,49 @@ export default function KaraokeCreator() {
             </div>
           )}
           {error && <div className="text-red-400 text-sm">{error}</div>}
+        </div>
+      </div>
+
+      {/* Danh sách các session đã tạo */}
+      <div className="mt-10">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-semibold">Karaoke đã tạo</h2>
+          <button onClick={loadSessions} className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded disabled:opacity-50" disabled={loadingSessions}>
+            {loadingSessions ? 'Đang tải...' : 'Làm mới'}
+          </button>
+        </div>
+        {sessionsError && <div className="text-red-400 mb-3">{sessionsError}</div>}
+        <div className="bg-white/5 rounded-xl p-4">
+          {sessions.length === 0 && !loadingSessions && <div>Chưa có session nào.</div>}
+          <div className="grid gap-3 max-h-[60vh] overflow-y-auto">
+            {sessions.map(item => (
+              <div key={item.sessionId} className="bg-white/5 rounded p-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-semibold truncate">{item.sessionId}</div>
+                  <div className="text-xs opacity-80">
+                    {item.hasLyrics ? 'Có lyrics' : 'Chưa có lyrics'}
+                    {item.createdAt && ` • ${new Date(item.createdAt).toLocaleString()}`}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="px-3 py-1 bg-green-600 hover:bg-green-700 rounded text-sm disabled:opacity-50"
+                    onClick={() => setActive({ sessionId: item.sessionId, instrumentalUrl: item.instrumentalUrl })}
+                    disabled={!item.instrumentalUrl || !item.hasLyrics}
+                  >
+                    Play
+                  </button>
+                  <a
+                    className="px-3 py-1 bg-white/10 rounded text-sm"
+                    href={item.instrumentalUrl}
+                    target="_blank" rel="noreferrer"
+                  >
+                    Nhạc nền
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

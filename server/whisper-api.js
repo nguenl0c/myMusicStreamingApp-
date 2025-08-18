@@ -138,6 +138,52 @@ export default function createWhisperRouter(uploadedTracks, createUniqueDirector
         return res.status(404).json({ error: 'Không tìm thấy lyrics.json cho session này.' });
     });
 
+    // Liệt kê các phiên karaoke đã có
+    router.get('/karaoke/sessions', async (req, res) => {
+        try {
+            const base = path.join(__dirname, 'server', 'karaoke');
+            if (!fs.existsSync(base)) return res.json([]);
+            const entries = fs.readdirSync(base, { withFileTypes: true });
+            const audioRegex = /\.(mp3|wav|m4a|flac|aac|ogg)$/i;
+            const sessions = [];
+            for (const ent of entries) {
+                if (!ent.isDirectory()) continue;
+                const sessionId = ent.name;
+                const dir = path.join(base, sessionId);
+                const files = fs.readdirSync(dir);
+                const lyricsExists = files.includes('lyrics.json');
+                let instrumental = null; let vocals = null; let createdAt = null; let totalSize = 0;
+                for (const f of files) {
+                    const full = path.join(dir, f);
+                    const st = fs.statSync(full);
+                    totalSize += st.isFile() ? st.size : 0;
+                    if (!createdAt || st.mtimeMs < createdAt) createdAt = st.mtimeMs;
+                    if (audioRegex.test(f)) {
+                        if (/^instrumental\./i.test(f)) {
+                            instrumental = `/karaoke/${encodeURIComponent(sessionId)}/${encodeURIComponent(f)}`;
+                        } else if (/^vocals?\./i.test(f)) {
+                            vocals = `/karaoke/${encodeURIComponent(sessionId)}/${encodeURIComponent(f)}`;
+                        }
+                    }
+                }
+                sessions.push({
+                    sessionId,
+                    instrumentalUrl: instrumental,
+                    vocalsUrl: vocals,
+                    hasLyrics: lyricsExists,
+                    createdAt: createdAt ? new Date(createdAt) : null,
+                    totalSize,
+                });
+            }
+            // mới nhất lên đầu
+            sessions.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+            res.json(sessions);
+        } catch (e) {
+            console.error('[karaoke/sessions] error:', e);
+            res.status(500).json({ error: 'Không thể liệt kê sessions', detail: e?.message });
+        }
+    });
+
     /**
      * API: Bắt đầu quá trình trích xuất lời bài hát (transcribe).
      * ĐÃ ĐƯỢC CẬP NHẬT: Loại bỏ hoàn toàn logic cũ, chỉ sử dụng script karaoke.py.
@@ -151,16 +197,21 @@ export default function createWhisperRouter(uploadedTracks, createUniqueDirector
         }
 
     // đã khai báo pythonCmd phía trên
-        const envDefaultModel = process.env.WHISPER_DEFAULT_MODEL;
-        const requestedModel = (model || envDefaultModel || 'small').toLowerCase();
-        const allowedModels = new Set(['large-v3', 'large-v2', 'medium', 'small', 'base', 'tiny', 'large-v3-turbo']);
-        const chosenModel = allowedModels.has(requestedModel) ? requestedModel : 'small';
-        const deviceOverride = process.env.WHISPER_DEVICE;
-        const outputBaseDir = path.join(__dirname, "server", "output");
-        if (!fs.existsSync(outputBaseDir)) fs.mkdirSync(outputBaseDir, { recursive: true });
+    const envDefaultModel = process.env.WHISPER_DEFAULT_MODEL;
+    const requestedModel = (model || envDefaultModel || 'small').toLowerCase();
+    const allowedModels = new Set(['large-v3', 'large-v2', 'medium', 'small', 'base', 'tiny', 'large-v3-turbo']);
+    const chosenModel = allowedModels.has(requestedModel) ? requestedModel : 'small';
+    const deviceOverride = process.env.WHISPER_DEVICE;
+    // Mixer output base: chỉ dùng để tìm stem nguồn
+    const outputBaseDir = path.join(__dirname, "server", "output");
+    if (!fs.existsSync(outputBaseDir)) fs.mkdirSync(outputBaseDir, { recursive: true });
+    // Karaoke base dir: nơi lưu lyrics.json riêng
+    const karaokeBaseDir = path.join(__dirname, "server", "karaoke");
+    if (!fs.existsSync(karaokeBaseDir)) fs.mkdirSync(karaokeBaseDir, { recursive: true });
 
         let sourceFilePath = null;
-        let finalOutputDir = null;
+    let finalOutputDir = null; // thư mục stems của Mixer (chỉ để tìm file nguồn)
+    let finalKaraokeDir = null; // thư mục lưu lyrics.json mới
 
         // Logic tìm file và thư mục (không thay đổi)
         if (uploadedTracks[trackId]) {
@@ -170,6 +221,8 @@ export default function createWhisperRouter(uploadedTracks, createUniqueDirector
             }
             finalOutputDir = path.join(outputBaseDir, trackInfo.songFolderName);
             if (!fs.existsSync(finalOutputDir)) fs.mkdirSync(finalOutputDir, { recursive: true });
+            finalKaraokeDir = path.join(karaokeBaseDir, trackInfo.songFolderName);
+            if (!fs.existsSync(finalKaraokeDir)) fs.mkdirSync(finalKaraokeDir, { recursive: true });
             if (!stemFile) {
                 return res.status(400).json({ error: "Vui lòng chọn stem để trích lời (thiếu stemFile)." });
             }
@@ -187,6 +240,8 @@ export default function createWhisperRouter(uploadedTracks, createUniqueDirector
             if (!fs.existsSync(finalOutputDir)) {
                 return res.status(404).json({ error: "Folder bài hát không tồn tại." });
             }
+            finalKaraokeDir = path.join(karaokeBaseDir, folderName);
+            if (!fs.existsSync(finalKaraokeDir)) fs.mkdirSync(finalKaraokeDir, { recursive: true });
             if (!stemFile) {
                 return res.status(400).json({ error: "Vui lòng chọn stem để trích lời (thiếu stemFile)." });
             }
@@ -206,7 +261,7 @@ export default function createWhisperRouter(uploadedTracks, createUniqueDirector
         const args = [
             scriptPath,
             '--input', sourceFilePath,
-            '--output_dir', finalOutputDir,
+            '--output_dir', finalKaraokeDir,
             '--model', chosenModel,
             '--formats', 'json', // Luôn yêu cầu định dạng JSON
         ];
@@ -292,18 +347,22 @@ export default function createWhisperRouter(uploadedTracks, createUniqueDirector
     // API lấy lời bài hát (không đổi, đã được đơn giản hóa ở phiên trước)
     router.get("/lyrics/:songFolderName", async (req, res) => {
         const { songFolderName } = req.params;
-        const folder = path.join(__dirname, "server", "output", songFolderName);
-        const jsonPath = path.join(folder, 'lyrics.json');
-
+        // Ưu tiên lấy từ thư mục karaoke riêng
+        let folder = path.join(__dirname, "server", "karaoke", songFolderName);
+        let jsonPath = path.join(folder, 'lyrics.json');
+        if (!fs.existsSync(jsonPath)) {
+            // Fallback: tương thích cũ (nếu trước đây đã ghi vào output)
+            folder = path.join(__dirname, "server", "output", songFolderName);
+            jsonPath = path.join(folder, 'lyrics.json');
+        }
         if (fs.existsSync(jsonPath)) {
             res.setHeader('Content-Type', 'application/json');
             return res.sendFile(jsonPath);
-        } else {
-            return res.status(404).json({
-                error: "Không tìm thấy file lời bài hát (lyrics.json).",
-                message: "Vui lòng chạy lại chức năng 'Trích lời' cho bài hát này để tạo file lời chi tiết."
-            });
         }
+        return res.status(404).json({
+            error: "Không tìm thấy file lời bài hát (lyrics.json).",
+            message: "Vui lòng chạy lại chức năng 'Trích lời' cho bài hát này để tạo file lời chi tiết."
+        });
     });
 
 
@@ -313,18 +372,20 @@ export default function createWhisperRouter(uploadedTracks, createUniqueDirector
      */
     router.get("/lyrics/:songFolderName", async (req, res) => {
         const { songFolderName } = req.params;
-        const folder = path.join(__dirname, "server", "output", songFolderName);
-        const jsonPath = path.join(folder, 'lyrics.json');
-
+        let folder = path.join(__dirname, "server", "karaoke", songFolderName);
+        let jsonPath = path.join(folder, 'lyrics.json');
+        if (!fs.existsSync(jsonPath)) {
+            folder = path.join(__dirname, "server", "output", songFolderName);
+            jsonPath = path.join(folder, 'lyrics.json');
+        }
         if (fs.existsSync(jsonPath)) {
             res.setHeader('Content-Type', 'application/json');
             return res.sendFile(jsonPath);
-        } else {
-            return res.status(404).json({
-                error: "Không tìm thấy file lời bài hát (lyrics.json).",
-                message: "Vui lòng chạy lại chức năng 'Trích lời' cho bài hát này để tạo file lời chi tiết."
-            });
         }
+        return res.status(404).json({
+            error: "Không tìm thấy file lời bài hát (lyrics.json).",
+            message: "Vui lòng chạy lại chức năng 'Trích lời' cho bài hát này để tạo file lời chi tiết."
+        });
     });
 
     /**

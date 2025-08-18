@@ -11,7 +11,7 @@ import Sidebar from '../components/sidebar/sidebar.jsx';
 import UnifiedPlaylists from './unifiedPlaylists';
 import PlayUnifiedPlaylist from './playUnifiedPlaylist';
 import Mixer from './MixerUpdate.jsx'
-import KaraokePage from './karaoke.jsx'
+import KaraokeCreator from './KaraokeCreator.jsx';
 
 export default function Home() {
   const [token, setToken] = useState("");
@@ -208,7 +208,7 @@ export default function Home() {
             />
             <Route path="/library" element={<Library />} />
             <Route path="/mixer" element={<Mixer />} />
-            <Route path="/karaoke" element={<KaraokePage />} />
+            <Route path="/karaoke" element={<KaraokeCreator />} />
             <Route path="/playlists" element={<UnifiedPlaylists />} />
             <Route path="/play/:playlistId" element={<PlayUnifiedPlaylist />} />
           </Routes>

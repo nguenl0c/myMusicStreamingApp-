@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useKaraokePlayer } from '../../hooks/useKaraokePlayer';
-import { fetchLyrics } from '../../services/mixerApi';
+import { fetchLyrics } from '../../services/karaokeApi';
 
 const Word = ({ wordData, currentTime }) => {
   const { word, start, end } = wordData;
