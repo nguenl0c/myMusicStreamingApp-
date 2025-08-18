@@ -17,7 +17,6 @@ export default function createKaraokeRouter() {
     const router = express.Router();
     const __dirname = path.resolve();
 
-    // KHẮC PHỤC LỖI:
     // 1. Cấu hình Multer để lưu file vào một thư mục tạm chung.
     const tempUploadDir = path.join(__dirname, "server", "uploads");
     if (!fs.existsSync(tempUploadDir)) {
@@ -96,6 +95,14 @@ export default function createKaraokeRouter() {
                 console.log(`[Job ${jobId}] Xử lý AI thành công.`);
                 jobs[jobId].status = 'completed';
                 jobs[jobId].message = 'Hoàn tất!';
+                // Ghi file info.json để lưu meta (ví dụ tên bài hát)
+                try {
+                    const infoPath = path.join(jobDir, 'info.json');
+                    const inferredSongName = path.basename(vocalDest, path.extname(vocalDest));
+                    fs.writeFileSync(infoPath, JSON.stringify({ songName: inferredSongName }, null, 2), 'utf-8');
+                } catch (werr) {
+                    console.warn(`[Job ${jobId}] Không thể ghi info.json:`, werr);
+                }
                 jobs[jobId].result = {
                     sessionId: jobId,
                     instrumentalUrl: `/karaoke/${jobId}/${path.basename(instrumentalDest)}`,
@@ -122,6 +129,64 @@ export default function createKaraokeRouter() {
 
         res.json(job);
     });
+
+    // THÊM MỚI: API để lấy danh sách các phiên karaoke đã xử lý
+    router.get('/sessions', (req, res) => {
+        const karaokeDir = path.join(__dirname, "server", "karaoke");
+        if (!fs.existsSync(karaokeDir)) {
+            return res.json([]);
+        }
+
+        try {
+            const sessionIds = fs.readdirSync(karaokeDir, { withFileTypes: true })
+                .filter(dirent => dirent.isDirectory())
+                .map(dirent => dirent.name);
+
+            const sessions = sessionIds.map(sessionId => {
+                const sessionDir = path.join(karaokeDir, sessionId);
+                const files = fs.readdirSync(sessionDir);
+
+                const infoFile = files.find(f => f === 'info.json');
+                const lyricsFile = files.find(f => f === 'lyrics.json');
+                const instrumentalFile = files.find(f => f.startsWith('instrumental.'));
+
+                // Cần tối thiểu lyrics và instrumental để phát
+                if (!lyricsFile || !instrumentalFile) {
+                    return null; // Session chưa hoàn chỉnh, bỏ qua
+                }
+
+                let songName = sessionId;
+                if (infoFile) {
+                    try {
+                        const info = JSON.parse(fs.readFileSync(path.join(sessionDir, infoFile), 'utf-8'));
+                        if (info.songName) songName = info.songName;
+                    } catch (perr) {
+                        console.warn(`Không đọc được info.json cho session ${sessionId}:`, perr);
+                    }
+                } else {
+                    // Suy luận từ tên file vocal/instrumental nếu có
+                    const vocalName = files.find(f => f.startsWith('vocals.')) || files.find(f => f.startsWith('vocal.'));
+                    if (vocalName) {
+                        songName = path.basename(vocalName, path.extname(vocalName));
+                    } else {
+                        songName = path.basename(instrumentalFile, path.extname(instrumentalFile));
+                    }
+                }
+
+                return {
+                    sessionId,
+                    songName,
+                    instrumentalUrl: `/karaoke/${sessionId}/${instrumentalFile}`,
+                };
+            }).filter(Boolean); // Lọc bỏ các session null (chưa hoàn chỉnh)
+
+            res.json(sessions);
+        } catch (error) {
+            console.error("Lỗi khi đọc danh sách session:", error);
+            res.status(500).json({ error: "Không thể lấy danh sách lịch sử." });
+        }
+    });
+
 
     return router;
 }

@@ -427,7 +427,7 @@ export default function UnifiedPlaylists() {
                             ) : (
                                 localTracks.map(track => (
                                     <div key={track.id} className="flex items-center bg-white/80 p-2 rounded-lg border border-blue-200/50 hover:bg-blue-50 transition-colors">
-                                        <div className="flex-1">
+                                        <div className="flex-1 min-w-0 ">
                                             <h4 className="font-medium text-gray-800 truncate text-sm">{track.title}</h4>
                                             <p className="text-xs text-gray-600 truncate">{track.artist}</p>
                                         </div>

@@ -6,7 +6,7 @@ import querystring from 'querystring';
 import process from 'process';
 import { Buffer } from 'buffer';
 import path from 'path';
-import demucsApiRouter, { uploadedTracks, createUniqueDirectoryName } from './demucs-api.js';
+import demucsApiRouter from './demucs-api.js';
 import createKaraokeRouter from './whisper-api.js';
 
 dotenv.config({path: '.env'});

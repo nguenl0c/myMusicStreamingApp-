@@ -1,6 +1,8 @@
 import axios from 'axios';
 
 const API_URL = 'http://localhost:5000/api';
+// Static files (lyrics, audio) are served outside of /api under /karaoke
+const SERVER_URL = API_URL.replace(/\/?api$/, '');
 
 /**
  * Gửi yêu cầu tạo một phiên karaoke mới.
@@ -37,6 +39,12 @@ export const getKaraokeJobStatus = async (jobId) => {
  * @returns {Promise<Array<object>>} - Promise trả về mảng lời bài hát.
  */
 export const fetchKaraokeLyrics = async (sessionId) => {
-  const response = await axios.get(`${API_URL}/karaoke/${sessionId}/lyrics.json`);
+  const response = await axios.get(`${SERVER_URL}/karaoke/${sessionId}/lyrics.json`);
+  return response.data;
+};
+
+export const getKaraokeSessions = async () => {
+  // Sessions endpoint is mounted under /api/karaoke
+  const response = await axios.get(`${API_URL}/karaoke/sessions`);
   return response.data;
 };

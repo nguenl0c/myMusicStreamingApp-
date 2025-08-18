@@ -9,16 +9,12 @@ export const useKaraokePlayer = () => {
   const [error, setError] = useState(null);
 
   const audioRef = useRef(new Audio());
-  const intervalRef = useRef(null);
 
   const cleanup = useCallback(() => {
     const audio = audioRef.current;
     if (audio) {
       audio.pause();
       audio.src = ''; // Giải phóng file khỏi bộ nhớ
-    }
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
     }
     setIsPlaying(false);
     setCurrentTime(0);
@@ -35,13 +31,22 @@ export const useKaraokePlayer = () => {
     const audio = audioRef.current;
 
     audio.src = url;
+    audio.preload = 'auto';
     audio.load();
 
-    const onLoadedMetadata = () => setDuration(audio.duration);
+    const onLoadedMetadata = () => setDuration(audio.duration || 0);
+    const onDurationChange = () => setDuration(audio.duration || 0);
+    const onTimeUpdate = () => setCurrentTime(audio.currentTime || 0);
+    const onPlay = () => setIsPlaying(true);
+    const onPause = () => setIsPlaying(false);
     const onEnded = () => setIsPlaying(false);
-    const onError = (e) => setError("Lỗi khi tải file nhạc.");
+    const onError = () => setError("Lỗi khi tải file nhạc.");
 
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
+    audio.addEventListener('durationchange', onDurationChange);
+    audio.addEventListener('timeupdate', onTimeUpdate);
+    audio.addEventListener('play', onPlay);
+    audio.addEventListener('pause', onPause);
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('error', onError);
 
@@ -55,26 +60,15 @@ export const useKaraokePlayer = () => {
     return () => {
       // Cleanup listeners
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+      audio.removeEventListener('durationchange', onDurationChange);
+      audio.removeEventListener('timeupdate', onTimeUpdate);
+      audio.removeEventListener('play', onPlay);
+      audio.removeEventListener('pause', onPause);
       audio.removeEventListener('ended', onEnded);
       audio.removeEventListener('error', onError);
       audio.removeEventListener('canplay', onCanPlay);
     };
   }, [cleanup]);
-
-  useEffect(() => {
-    if (isPlaying) {
-      intervalRef.current = setInterval(() => {
-        setCurrentTime(audioRef.current.currentTime);
-      }, 100);
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    }
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [isPlaying]);
 
   const play = () => {
     audioRef.current.play();

@@ -95,19 +95,19 @@ export default function UploadCard({ onSeparationComplete }) {
                 <div>
                     <label className="block text-xs text-gray-600 mb-1">Mô hình</label>
                     <select value={model} onChange={e => setModel(e.target.value)} className="w-full p-2 border rounded-xl bg-white/60">
-                        <option value="htdemucs">htdemucs (mặc định)</option>
-                        <option value="mdx_q">mdx_q (nhẹ hơn, nhanh hơn)</option>
-                        <option value="htdemucs_ft">htdemucs_ft</option>
+                        <option value="htdemucs">htdemucs</option>
+                        <option value="mdx_q">mdx_q (lightweight, faster)</option>
+                        <option value="htdemucs_ft">htdemucs_ft (fine-tuned version)</option>
                     </select>
                 </div>
                 <div>
-                    <label className="block text-xs text-gray-600 mb-1">Chỉ tách 1 stem (tùy chọn)</label>
+                    <label className="block text-xs text-gray-600 mb-1">Two Stems Options</label>
                     <select value={twoStems} onChange={e => setTwoStems(e.target.value)} className="w-full p-2 border rounded-xl bg-white/60">
-                        <option value="">Tách 4 stems</option>
-                        <option value="vocals">Chỉ vocals</option>
-                        <option value="drums">Chỉ drums</option>
-                        <option value="bass">Chỉ bass</option>
-                        <option value="other">Chỉ other</option>
+                        <option value="">4 Stems</option>
+                        <option value="vocals">Vocals</option>
+                        <option value="drums">Drums</option>
+                        <option value="bass">Bass</option>
+                        <option value="other">Other</option>
                     </select>
                 </div>
                 <div>
@@ -122,9 +122,9 @@ export default function UploadCard({ onSeparationComplete }) {
                 <div>
                     <label className="block text-xs text-gray-600 mb-1">MP3 Preset</label>
                     <select value={mp3Preset} onChange={e => setMp3Preset(Number(e.target.value))} className="w-full p-2 border rounded-xl bg-white/60">
-                        <option value={2}>2 (chất lượng tốt nhất)</option>
-                        <option value={5}>5 (mặc định)</option>
-                        <option value={7}>7 (nhanh nhất)</option>
+                        <option value={2}>2 (best quality)</option>
+                        <option value={5}>5 (default)</option>
+                        <option value={7}>7 (fastest)</option>
                     </select>
                 </div>
             </div>
