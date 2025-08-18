@@ -1,58 +1,24 @@
-// src/hooks/useKaraokePlayer.js
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
-export function useKaraokePlayer() {
-  const audioRef = useRef(null);
+// Dựa trên hook useLocalPlayer của bạn, nhưng được đơn giản hóa để
+// làm việc với URL trực tiếp thay vì ID từ database.
+export const useKaraokePlayer = () => {
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [error, setError] = useState(null);
 
-  // Tạo audio khi cần
-  const ensureAudio = useCallback(() => {
-    if (!audioRef.current) {
-      const audio = new Audio();
-      audio.crossOrigin = 'anonymous';
-      audioRef.current = audio;
-    }
-    return audioRef.current;
-  }, []);
-
-  const load = useCallback((url) => {
-    const audio = ensureAudio();
-    // Prefix URL khi là đường dẫn tương đối từ backend
-    const fullUrl = /^https?:\/\//i.test(url) ? url : `http://localhost:5000${url}`;
-    audio.src = fullUrl;
-    audio.load();
-  }, [ensureAudio]);
-
-  const play = useCallback(async () => {
-    const audio = ensureAudio();
-    try {
-      await audio.play();
-      setIsPlaying(true);
-    } catch (e) {
-      console.error('Audio play error:', e);
-    }
-  }, [ensureAudio]);
-
-  const pause = useCallback(() => {
-    const audio = ensureAudio();
-    audio.pause();
-    setIsPlaying(false);
-  }, [ensureAudio]);
-
-  const seek = useCallback((t) => {
-    const audio = ensureAudio();
-    audio.currentTime = t;
-    setCurrentTime(t);
-  }, [ensureAudio]);
+  const audioRef = useRef(new Audio());
+  const intervalRef = useRef(null);
 
   const cleanup = useCallback(() => {
     const audio = audioRef.current;
     if (audio) {
       audio.pause();
-      audio.src = '';
-      audioRef.current = null;
+      audio.src = ''; // Giải phóng file khỏi bộ nhớ
+    }
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
     }
     setIsPlaying(false);
     setCurrentTime(0);
@@ -60,19 +26,80 @@ export function useKaraokePlayer() {
   }, []);
 
   useEffect(() => {
-    const audio = ensureAudio();
-    const onTime = () => setCurrentTime(audio.currentTime || 0);
-    const onLoaded = () => setDuration(audio.duration || 0);
-    const onEnd = () => setIsPlaying(false);
-    audio.addEventListener('timeupdate', onTime);
-    audio.addEventListener('loadedmetadata', onLoaded);
-    audio.addEventListener('ended', onEnd);
-    return () => {
-      audio.removeEventListener('timeupdate', onTime);
-      audio.removeEventListener('loadedmetadata', onLoaded);
-      audio.removeEventListener('ended', onEnd);
-    };
-  }, [ensureAudio]);
+    // Đảm bảo cleanup được gọi khi component bị unmount
+    return cleanup;
+  }, [cleanup]);
 
-  return { isPlaying, currentTime, duration, load, play, pause, seek, cleanup };
-}
+  const load = useCallback((url) => {
+    cleanup(); // Dọn dẹp trước khi tải track mới
+    const audio = audioRef.current;
+
+    audio.src = url;
+    audio.load();
+
+    const onLoadedMetadata = () => setDuration(audio.duration);
+    const onEnded = () => setIsPlaying(false);
+    const onError = (e) => setError("Lỗi khi tải file nhạc.");
+
+    audio.addEventListener('loadedmetadata', onLoadedMetadata);
+    audio.addEventListener('ended', onEnded);
+    audio.addEventListener('error', onError);
+
+    // Tự động phát sau khi có đủ dữ liệu
+    const onCanPlay = () => {
+      audio.play().catch(e => console.error("Autoplay failed:", e));
+      setIsPlaying(true);
+    };
+    audio.addEventListener('canplay', onCanPlay);
+
+    return () => {
+      // Cleanup listeners
+      audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+      audio.removeEventListener('ended', onEnded);
+      audio.removeEventListener('error', onError);
+      audio.removeEventListener('canplay', onCanPlay);
+    };
+  }, [cleanup]);
+
+  useEffect(() => {
+    if (isPlaying) {
+      intervalRef.current = setInterval(() => {
+        setCurrentTime(audioRef.current.currentTime);
+      }, 100);
+    } else {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [isPlaying]);
+
+  const play = () => {
+    audioRef.current.play();
+    setIsPlaying(true);
+  };
+
+  const pause = () => {
+    audioRef.current.pause();
+    setIsPlaying(false);
+  };
+
+  const seek = (time) => {
+    audioRef.current.currentTime = time;
+    setCurrentTime(time);
+  };
+
+  return {
+    isPlaying,
+    duration,
+    currentTime,
+    error,
+    load,
+    play,
+    pause,
+    seek,
+    cleanup,
+  };
+};

@@ -1,31 +1,42 @@
 import axios from 'axios';
 
-// Karaoke APIs (tách riêng khỏi luồng Mixer)
 const API_URL = 'http://localhost:5000/api';
-const api = axios.create({ baseURL: API_URL });
 
-// Lấy lyrics cho sessionId (luồng mới) hoặc tên thư mục bài hát (fallback luồng cũ)
-export const fetchLyrics = async (idOrName) => {
-  if (!idOrName) throw new Error('Thiếu sessionId hoặc tên bài hát');
-  try {
-    const res = await api.get(`/karaoke/lyrics/${encodeURIComponent(idOrName)}`);
-    const data = res.data;
-    return Array.isArray(data) ? data : (Array.isArray(data?.lyrics) ? data.lyrics : []);
-  } catch (errNew) {
-    try {
-      const res = await api.get(`/lyrics/${encodeURIComponent(idOrName)}`);
-      const data = res.data;
-      return Array.isArray(data) ? data : (Array.isArray(data?.lyrics) ? data.lyrics : []);
-    } catch (errOld) {
-      const msg = errNew?.response?.data?.message || errOld?.response?.data?.message || 'Không thể tải lyrics';
-      const status = errNew?.response?.status || errOld?.response?.status;
-      const e = new Error(msg);
-      e.status = status;
-      throw e;
-    }
-  }
+/**
+ * Gửi yêu cầu tạo một phiên karaoke mới.
+ * @param {File} vocalTrack - File nhạc có lời.
+ * @param {File} instrumentalTrack - File nhạc không lời.
+ * @returns {Promise<string>} - Promise trả về jobId.
+ */
+export const createKaraokeSession = async (vocalTrack, instrumentalTrack) => {
+  const formData = new FormData();
+  formData.append('vocalTrack', vocalTrack);
+  formData.append('instrumentalTrack', instrumentalTrack);
+
+  const response = await axios.post(`${API_URL}/karaoke/create`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data.jobId; // Trả về jobId
 };
 
-export default {
-  fetchLyrics,
+/**
+ * Lấy trạng thái của một công việc đang xử lý.
+ * @param {string} jobId - ID của công việc.
+ * @returns {Promise<object>} - Promise trả về đối tượng trạng thái.
+ */
+export const getKaraokeJobStatus = async (jobId) => {
+  const response = await axios.get(`${API_URL}/karaoke/status/${jobId}`);
+  return response.data;
+};
+
+/**
+ * Lấy file lời bài hát đã được xử lý.
+ * @param {string} sessionId - ID của phiên làm việc.
+ * @returns {Promise<Array<object>>} - Promise trả về mảng lời bài hát.
+ */
+export const fetchKaraokeLyrics = async (sessionId) => {
+  const response = await axios.get(`${API_URL}/karaoke/${sessionId}/lyrics.json`);
+  return response.data;
 };

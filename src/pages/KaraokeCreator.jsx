@@ -1,149 +1,106 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createKaraokeSession, getKaraokeJobStatus } from '../services/karaokeApi';
 import KaraokePlayer from '../components/karaoke/KaraokePlayer';
 
 export default function KaraokeCreator() {
   const [vocalFile, setVocalFile] = useState(null);
   const [instrumentalFile, setInstrumentalFile] = useState(null);
-  const [status, setStatus] = useState('idle');
-  const [error, setError] = useState(null);
-  const [session, setSession] = useState(null); // { sessionId, instrumentalUrl }
-  // Danh sách sessions hiện có
-  const [sessions, setSessions] = useState([]);
-  const [loadingSessions, setLoadingSessions] = useState(false);
-  const [sessionsError, setSessionsError] = useState(null);
-  const [active, setActive] = useState(null); // { sessionId, instrumentalUrl }
+  const [jobId, setJobId] = useState(null);
+  const [jobStatus, setJobStatus] = useState({ status: 'idle', message: '' });
+  const [karaokeData, setKaraokeData] = useState(null); // { sessionId, instrumentalUrl }
+  const [error, setError] = useState('');
 
-  const loadSessions = async () => {
-    setLoadingSessions(true);
-    setSessionsError(null);
-    try {
-      const res = await fetch('http://localhost:5000/api/karaoke/sessions');
-      const data = await res.json();
-      setSessions(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error(e);
-      setSessionsError(e.message || 'Không thể tải danh sách');
-    } finally {
-      setLoadingSessions(false);
+  const pollInterval = useRef(null);
+
+  // Effect để polling trạng thái job
+  useEffect(() => {
+    if (jobId && (jobStatus.status === 'processing' || jobStatus.status === 'pending')) {
+      pollInterval.current = setInterval(async () => {
+        try {
+          const status = await getKaraokeJobStatus(jobId);
+          setJobStatus(status);
+          if (status.status === 'completed') {
+            setKaraokeData(status.result);
+            clearInterval(pollInterval.current);
+          } else if (status.status === 'failed') {
+            setError(status.message);
+            clearInterval(pollInterval.current);
+          }
+        } catch (err) {
+          setError('Không thể lấy trạng thái xử lý.');
+          clearInterval(pollInterval.current);
+        }
+      }, 3000); // Hỏi thăm mỗi 3 giây
     }
-  };
+    return () => {
+      if (pollInterval.current) clearInterval(pollInterval.current);
+    };
+  }, [jobId, jobStatus.status]);
 
-  useEffect(() => { loadSessions(); }, []);
 
-  const handleStart = async () => {
-    setError(null);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     if (!vocalFile || !instrumentalFile) {
-      setError('Vui lòng chọn đủ 2 file.');
+      setError('Vui lòng chọn đủ cả 2 file.');
       return;
     }
+    setError('');
+    setJobStatus({ status: 'pending', message: 'Đang tải file lên server...' });
     try {
-      setStatus('uploading');
-      const fd = new FormData();
-      fd.append('vocalTrack', vocalFile);
-      fd.append('instrumentalTrack', instrumentalFile);
-      const res = await fetch('http://localhost:5000/api/karaoke/create', {
-        method: 'POST',
-        body: fd,
-      });
-      if (!res.ok) throw new Error(`Tạo session thất bại: ${res.status}`);
-      const data = await res.json();
-      setSession(data);
-      setStatus('processing');
-      // Tùy chọn: có thể poll trạng thái, nhưng lyrics.json được tạo ngay trong cùng thư mục; KaraokePlayer sẽ tải khi mount
-    } catch (e) {
-      console.error(e);
-      setError(e.message || 'Lỗi không xác định');
-      setStatus('idle');
+      const newJobId = await createKaraokeSession(vocalFile, instrumentalFile);
+      setJobId(newJobId);
+    } catch (err) {
+      setError('Tải file thất bại. Vui lòng thử lại.');
+      setJobStatus({ status: 'idle', message: '' });
     }
   };
 
-  const playerData = session || active;
-  const handleClosePlayer = () => {
-    if (session) { setSession(null); setStatus('idle'); }
-    if (active) setActive(null);
-    loadSessions();
-  };
-
-  if (playerData) {
-    return (
-      <KaraokePlayer
-        sessionId={playerData.sessionId}
-        instrumentalUrl={playerData.instrumentalUrl}
-        onClose={handleClosePlayer}
-      />
-    );
+  const handleReset = () => {
+    setVocalFile(null);
+    setInstrumentalFile(null);
+    setJobId(null);
+    setJobStatus({ status: 'idle', message: '' });
+    setKaraokeData(null);
+    setError('');
   }
 
-  return (
-    <div className="p-6 text-white screen-container min-h-screen">
-      <h1 className="text-3xl font-bold mb-6">Tạo Karaoke của riêng bạn</h1>
-      <div className="grid gap-6 max-w-xl">
-        <div>
-          <label className="block mb-2 font-semibold">Tải lên bài hát gốc (có lời)</label>
-          <input type="file" accept=".mp3,.wav,.m4a" onChange={e => setVocalFile(e.target.files?.[0] || null)} className="block w-full" />
-          {vocalFile && <div className="text-sm opacity-80 mt-1">{vocalFile.name}</div>}
-        </div>
-        <div>
-          <label className="block mb-2 font-semibold">Tải lên nhạc nền (không lời)</label>
-          <input type="file" accept=".mp3,.wav,.m4a" onChange={e => setInstrumentalFile(e.target.files?.[0] || null)} className="block w-full" />
-          {instrumentalFile && <div className="text-sm opacity-80 mt-1">{instrumentalFile.name}</div>}
-        </div>
-        <div className="flex items-center gap-3">
-          <button onClick={handleStart} className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded disabled:opacity-50" disabled={status==='uploading'}>
-            Bắt đầu tạo Karaoke
-          </button>
-          {status !== 'idle' && (
-            <div className="text-sm opacity-80">
-              {status === 'uploading' && 'Đang upload...'}
-              {status === 'processing' && 'Đang trích xuất lời...'}
-            </div>
-          )}
-          {error && <div className="text-red-400 text-sm">{error}</div>}
-        </div>
-      </div>
+  // Nếu đã có dữ liệu karaoke, hiển thị trình phát
+  if (karaokeData) {
+    return <KaraokePlayer data={karaokeData} onBack={handleReset} />;
+  }
 
-      {/* Danh sách các session đã tạo */}
-      <div className="mt-10">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-2xl font-semibold">Karaoke đã tạo</h2>
-          <button onClick={loadSessions} className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded disabled:opacity-50" disabled={loadingSessions}>
-            {loadingSessions ? 'Đang tải...' : 'Làm mới'}
-          </button>
+  // Giao diện upload và hiển thị tiến trình
+  return (
+    <div className="p-6 text-white screen-container mx-auto">
+      <h1 className="text-3xl font-bold mb-4">Tạo Karaoke</h1>
+      <p className="text-gray-400 mb-6">Tải lên bài hát gốc và nhạc nền để hệ thống tự động tạo lời và đồng bộ.</p>
+
+      <form onSubmit={handleSubmit} className="bg-white/5 rounded-xl p-6 space-y-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">1. Bài hát gốc (có lời)</label>
+          <input type="file" accept="audio/*" onChange={e => setVocalFile(e.target.files[0])} className="file-input file-input-bordered w-full" />
+          {vocalFile && <p className="text-xs text-gray-400 mt-1">Đã chọn: {vocalFile.name}</p>}
         </div>
-        {sessionsError && <div className="text-red-400 mb-3">{sessionsError}</div>}
-        <div className="bg-white/5 rounded-xl p-4">
-          {sessions.length === 0 && !loadingSessions && <div>Chưa có session nào.</div>}
-          <div className="grid gap-3 max-h-[60vh] overflow-y-auto">
-            {sessions.map(item => (
-              <div key={item.sessionId} className="bg-white/5 rounded p-3 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="font-semibold truncate">{item.sessionId}</div>
-                  <div className="text-xs opacity-80">
-                    {item.hasLyrics ? 'Có lyrics' : 'Chưa có lyrics'}
-                    {item.createdAt && ` • ${new Date(item.createdAt).toLocaleString()}`}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    className="px-3 py-1 bg-green-600 hover:bg-green-700 rounded text-sm disabled:opacity-50"
-                    onClick={() => setActive({ sessionId: item.sessionId, instrumentalUrl: item.instrumentalUrl })}
-                    disabled={!item.instrumentalUrl || !item.hasLyrics}
-                  >
-                    Play
-                  </button>
-                  <a
-                    className="px-3 py-1 bg-white/10 rounded text-sm"
-                    href={item.instrumentalUrl}
-                    target="_blank" rel="noreferrer"
-                  >
-                    Nhạc nền
-                  </a>
-                </div>
-              </div>
-            ))}
-          </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">2. Nhạc nền (không lời)</label>
+          <input type="file" accept="audio/*" onChange={e => setInstrumentalFile(e.target.files[0])} className="file-input file-input-bordered w-full" />
+          {instrumentalFile && <p className="text-xs text-gray-400 mt-1">Đã chọn: {instrumentalFile.name}</p>}
         </div>
-      </div>
+
+        <button type="submit" className="btn btn-primary w-full" disabled={jobStatus.status === 'pending' || jobStatus.status === 'processing'}>
+          {jobStatus.status === 'pending' || jobStatus.status === 'processing' ? 'Đang xử lý...' : 'Tạo Karaoke'}
+        </button>
+      </form>
+
+      {(jobStatus.status === 'pending' || jobStatus.status === 'processing') && (
+        <div className="mt-6 text-center">
+          <p className="text-lg">{jobStatus.message}</p>
+          <p className="text-sm text-gray-400">(Việc này có thể mất vài phút, vui lòng không rời khỏi trang)</p>
+          <progress className="progress progress-primary w-full mt-2"></progress>
+        </div>
+      )}
+
+      {error && <p className="mt-4 text-red-400 text-center">{error}</p>}
     </div>
   );
 }

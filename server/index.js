@@ -7,7 +7,7 @@ import process from 'process';
 import { Buffer } from 'buffer';
 import path from 'path';
 import demucsApiRouter, { uploadedTracks, createUniqueDirectoryName } from './demucs-api.js';
-import createWhisperRouter from './whisper-api.js';
+import createKaraokeRouter from './whisper-api.js';
 
 dotenv.config({path: '.env'});
 console.log('Environment variables loaded:');
@@ -28,7 +28,7 @@ app.use(express.json());
 // Mount demucs API router
 app.use('/api', demucsApiRouter);
 // Mount whisper API router (lyrics extraction/karaoke)
-app.use('/api', createWhisperRouter(uploadedTracks, createUniqueDirectoryName));
+app.use('/api/karaoke', createKaraokeRouter());
 
 // Serve static files for output
 const __dirname = path.resolve();
