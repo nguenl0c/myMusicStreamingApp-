@@ -52,7 +52,7 @@ def main():
     parser = argparse.ArgumentParser(description='Karaoke transcription using stable-ts (stable_whisper).')
     parser.add_argument('--input', required=True, help='Đường dẫn file âm thanh đầu vào')
     parser.add_argument('--output_dir', required=True, help='Thư mục xuất kết quả')
-    parser.add_argument('--model', default='small', help='Model: tiny|base|small|medium|large-v3|large-v3-turbo')
+    parser.add_argument('--model', default='large-v3-turbo', help='Model: tiny|base|small|medium|large-v3|large-v3-turbo')
     parser.add_argument('--language', default='auto', help='Mã ngôn ngữ, ví dụ: vi|en|auto')
     parser.add_argument('--device', default=None, help='cpu|cuda')
     parser.add_argument('--formats', default='json', help='Định dạng đầu ra: json (khuyến nghị) | srt | lrc')

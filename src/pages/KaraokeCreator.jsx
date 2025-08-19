@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { createKaraokeSession, getKaraokeJobStatus, getKaraokeSessions } from '../services/karaokeApi';
+import { createKaraokeSession, getKaraokeJobStatus, getKaraokeSessions, deleteKaraokeSession, renameKaraokeSession } from '../services/karaokeApi';
 import KaraokePlayer from '../components/karaoke/KaraokePlayer';
 import { FaHistory } from 'react-icons/fa';
 
@@ -58,6 +58,16 @@ export default function KaraokeCreator() {
     loadSessions();
   }, []);
 
+  const refreshSessions = async () => {
+    try {
+      setIsLoadingSessions(true);
+      const sessionList = await getKaraokeSessions();
+      setSessions(sessionList);
+    } finally {
+      setIsLoadingSessions(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!vocalFile || !instrumentalFile) {
@@ -91,6 +101,31 @@ export default function KaraokeCreator() {
       instrumentalUrl: session.instrumentalUrl,
       songName: session.songName // Truyền cả tên bài hát
     });
+  };
+
+  const handleDeleteSession = async (e, sessionId) => {
+    e.stopPropagation();
+    if (!confirm('Xóa phiên karaoke này? Hành động không thể hoàn tác.')) return;
+    try {
+      await deleteKaraokeSession(sessionId);
+      await refreshSessions();
+    } catch (err) {
+      console.error('Xóa session thất bại:', err);
+      alert('Xóa thất bại');
+    }
+  };
+
+  const handleRenameSession = async (e, sessionId, prevName) => {
+    e.stopPropagation();
+    const newName = prompt('Nhập tên mới cho phiên karaoke:', prevName || sessionId);
+    if (!newName || newName === prevName || newName === sessionId) return;
+    try {
+      await renameKaraokeSession(sessionId, newName);
+      await refreshSessions();
+    } catch (err) {
+      console.error('Đổi tên thất bại:', err);
+      alert('Đổi tên thất bại');
+    }
   };
 
   // Nếu đã có dữ liệu karaoke, hiển thị trình phát
@@ -142,9 +177,17 @@ export default function KaraokeCreator() {
               {sessions.map(session => (
                 <li key={session.sessionId}
                   onClick={() => handleSessionSelect(session)}
-                  className="cursor-pointer p-4 bg-white/5 rounded-lg hover:bg-white/10 transition-colors duration-200">
-                  <p className="font-semibold truncate" title={session.songName}>{session.songName}</p>
-                  <p className="text-xs text-gray-400">{session.sessionId}</p>
+                  className="group cursor-pointer p-4 bg-white/5 rounded-lg hover:bg-white/10 transition-colors duration-200">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate" title={session.songName}>{session.songName}</p>
+                      <p className="text-xs text-gray-400">{session.sessionId}</p>
+                    </div>
+                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button className="btn btn-xs" onClick={(e) => handleRenameSession(e, session.sessionId, session.songName)}>Đổi tên</button>
+                      <button className="btn btn-xs btn-error" onClick={(e) => handleDeleteSession(e, session.sessionId)}>Xóa</button>
+                    </div>
+                  </div>
                 </li>
               ))}
             </ul>

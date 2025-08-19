@@ -16,6 +16,7 @@ const jobs = {};
 export default function createKaraokeRouter() {
     const router = express.Router();
     const __dirname = path.resolve();
+    const karaokeBaseDir = path.join(__dirname, "server", "karaoke");
 
     // 1. Cấu hình Multer để lưu file vào một thư mục tạm chung.
     const tempUploadDir = path.join(__dirname, "server", "uploads");
@@ -44,7 +45,7 @@ export default function createKaraokeRouter() {
         // KHẮC PHỤC LỖI:
         // 2. Tạo jobId và thư mục session SAU KHI multer đã upload file thành công.
         const jobId = `job_${randomUUID()}`;
-        const jobDir = path.join(__dirname, "server", "karaoke", jobId);
+    const jobDir = path.join(karaokeBaseDir, jobId);
         fs.mkdirSync(jobDir, { recursive: true });
 
         // 3. Di chuyển file từ thư mục tạm vào thư mục session với tên chuẩn.
@@ -79,7 +80,7 @@ export default function createKaraokeRouter() {
             scriptPath,
             '--input', vocalDest, // Sử dụng đường dẫn file mới
             '--output_dir', jobDir,
-            '--model', 'small',
+            '--model', 'large-v3-turbo',
             '--formats', 'json',
         ];
 
@@ -132,8 +133,8 @@ export default function createKaraokeRouter() {
 
     // THÊM MỚI: API để lấy danh sách các phiên karaoke đã xử lý
     router.get('/sessions', (req, res) => {
-        const karaokeDir = path.join(__dirname, "server", "karaoke");
-        if (!fs.existsSync(karaokeDir)) {
+    const karaokeDir = karaokeBaseDir;
+    if (!fs.existsSync(karaokeDir)) {
             return res.json([]);
         }
 
@@ -184,6 +185,104 @@ export default function createKaraokeRouter() {
         } catch (error) {
             console.error("Lỗi khi đọc danh sách session:", error);
             res.status(500).json({ error: "Không thể lấy danh sách lịch sử." });
+        }
+    });
+
+    // XÓA một session: xóa cả thư mục sessionId
+    router.delete('/sessions/:sessionId', (req, res) => {
+        const { sessionId } = req.params;
+        if (!sessionId || sessionId.includes('..') || path.isAbsolute(sessionId)) {
+            return res.status(400).json({ error: 'sessionId không hợp lệ' });
+        }
+        try {
+            const dir = path.join(karaokeBaseDir, sessionId);
+            if (!fs.existsSync(dir)) {
+                return res.status(404).json({ error: 'Không tìm thấy session' });
+            }
+            fs.rmSync(dir, { recursive: true, force: true });
+            delete jobs[sessionId];
+            return res.json({ ok: true });
+        } catch (err) {
+            console.error('Lỗi xóa session:', err);
+            return res.status(500).json({ error: 'Xóa thất bại' });
+        }
+    });
+
+    // ĐỔI TÊN hiển thị (không đổi thư mục/id)
+    router.patch('/sessions/:sessionId/rename', (req, res) => {
+        const { sessionId } = req.params;
+        let { newName } = req.body || {};
+        if (!sessionId || sessionId.includes('..') || path.isAbsolute(sessionId)) {
+            return res.status(400).json({ error: 'sessionId không hợp lệ' });
+        }
+        if (!newName || typeof newName !== 'string' || !newName.trim()) {
+            return res.status(400).json({ error: 'newName là bắt buộc' });
+        }
+        const displayName = newName.trim();
+
+        try {
+            const dir = path.join(karaokeBaseDir, sessionId);
+            if (!fs.existsSync(dir)) {
+                return res.status(404).json({ error: 'Không tìm thấy session' });
+            }
+            const infoPath = path.join(dir, 'info.json');
+            let info = {};
+            if (fs.existsSync(infoPath)) {
+                try { info = JSON.parse(fs.readFileSync(infoPath, 'utf-8')); }
+                catch (perr) { console.warn('[Rename] Không parse được info.json cũ:', perr); }
+            }
+            info.songName = displayName;
+            fs.writeFileSync(infoPath, JSON.stringify(info, null, 2), 'utf-8');
+
+            return res.json({ ok: true, sessionId, songName: displayName });
+        } catch (err) {
+            console.error('Lỗi đổi tên session:', err);
+            return res.status(500).json({ error: 'Đổi tên thất bại' });
+        }
+    });
+
+    // CẬP NHẬT LỜI: ghi đè file lyrics.json của một session
+    router.patch('/sessions/:sessionId/lyrics', (req, res) => {
+        const { sessionId } = req.params;
+        if (!sessionId || sessionId.includes('..') || path.isAbsolute(sessionId)) {
+            return res.status(400).json({ error: 'sessionId không hợp lệ' });
+        }
+
+        const dir = path.join(karaokeBaseDir, sessionId);
+        if (!fs.existsSync(dir)) {
+            return res.status(404).json({ error: 'Không tìm thấy session' });
+        }
+
+        // Cho phép body là mảng (lyrics) hoặc { lyrics: [...] }
+        const body = req.body;
+        const lyrics = Array.isArray(body) ? body : body?.lyrics;
+        if (!Array.isArray(lyrics)) {
+            return res.status(400).json({ error: 'Dữ liệu lyrics không hợp lệ, cần là một mảng.' });
+        }
+
+        // Kiểm tra cơ bản cấu trúc
+        const isValid = lyrics.every(line =>
+            line && typeof line.start === 'number' && typeof line.end === 'number' && Array.isArray(line.words) &&
+            line.words.every(w => w && typeof w.word === 'string' && typeof w.start === 'number' && typeof w.end === 'number')
+        );
+        if (!isValid) {
+            return res.status(400).json({ error: 'Cấu trúc lyrics không đúng định dạng.' });
+        }
+
+        try {
+            const lyricsPath = path.join(dir, 'lyrics.json');
+            // Tạo bản sao lưu trước khi ghi đè
+            if (fs.existsSync(lyricsPath)) {
+                const ts = new Date().toISOString().replace(/[:.]/g, '-');
+                const backupPath = path.join(dir, `lyrics.backup-${ts}.json`);
+                fs.copyFileSync(lyricsPath, backupPath);
+            }
+
+            fs.writeFileSync(lyricsPath, JSON.stringify(lyrics, null, 2), 'utf-8');
+            return res.json({ ok: true });
+        } catch (err) {
+            console.error('Lỗi ghi lyrics:', err);
+            return res.status(500).json({ error: 'Không thể lưu lyrics' });
         }
     });
 

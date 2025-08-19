@@ -48,3 +48,23 @@ export const getKaraokeSessions = async () => {
   const response = await axios.get(`${API_URL}/karaoke/sessions`);
   return response.data;
 };
+
+export const deleteKaraokeSession = async (sessionId) => {
+  const response = await axios.delete(`${API_URL}/karaoke/sessions/${encodeURIComponent(sessionId)}`);
+  return response.data;
+};
+
+export const renameKaraokeSession = async (sessionId, newName) => {
+  const response = await axios.patch(`${API_URL}/karaoke/sessions/${encodeURIComponent(sessionId)}/rename`, { newName });
+  return response.data; // { ok: true, sessionId: newName }
+};
+
+/**
+ * Lưu lại lời bài hát đã chỉnh sửa cho một session.
+ * @param {string} sessionId
+ * @param {Array<object>} lyrics
+ */
+export const saveKaraokeLyrics = async (sessionId, lyrics) => {
+  const response = await axios.patch(`${API_URL}/karaoke/sessions/${encodeURIComponent(sessionId)}/lyrics`, lyrics);
+  return response.data; // { ok: true }
+};

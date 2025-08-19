@@ -20,7 +20,7 @@ const port = 5000;
 
 app.use(cors({
     origin: [ 'http://localhost:5180'], // Bao gồm các port có thể dùng
-    methods: ['GET', 'POST', 'DELETE'],
+    methods: ['GET', 'POST', 'DELETE', 'PATCH', 'OPTIONS'],
     credentials: true
   }));
 app.use(express.json());
