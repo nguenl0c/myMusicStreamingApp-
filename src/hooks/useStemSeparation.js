@@ -1,7 +1,7 @@
 //../src/hooks/useStemSeparation.js
 //upload và tách nhạc
 import { useState, useEffect, useRef } from 'react';
-import { uploadAudio, startDemucs, getDemucsProgress } from '../services/mixerApi';
+import { uploadAudio, startDemucs, getDemucsProgress } from '../services/mixerApi.js';
 
 export function useStemSeparation() {
     const [isSeparating, setIsSeparating] = useState(false);

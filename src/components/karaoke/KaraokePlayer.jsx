@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { fetchKaraokeLyrics, saveKaraokeLyrics } from '../../services/karaokeApi';
 import { useKaraokePlayer } from '../../hooks/useKaraokePlayer';
-import { FaPlay, FaPause } from 'react-icons/fa';
+import { FaPlay, FaPause, FaAngleDoubleLeft } from 'react-icons/fa';
 
 // Component Word: hiển thị từng từ với lớp vàng chạy phủ chữ xám
 const Word = ({ wordData, currentTime }) => {
@@ -27,11 +27,6 @@ const Word = ({ wordData, currentTime }) => {
       {/* Lớp chữ xám ở dưới, không thay đổi */}
       <span className="text-gray-400 select-none">{word}</span>
 
-      {/* KHẮC PHỤC LỖI:
-          - Lớp bên ngoài (div) chỉ làm nhiệm vụ cắt theo chiều rộng (width).
-          - Lớp bên trong (span) sẽ chứa chữ màu vàng, đảm bảo nó có đủ chiều cao
-            để không bị cắt mất phần đuôi.
-      */}
       <div
         className="absolute left-0 top-0 -bottom-[3px] overflow-hidden pointer-events-none"
         style={{ width: `${progress}%` }}
@@ -197,11 +192,11 @@ export default function KaraokePlayer({ data, onBack }) {
   };
 
   return (
-    <div className="p-6 text-white screen-container flex flex-col h-full max-h-screen">
+    <div className="p-6 text-gray-800 flex flex-col h-full max-h-screen">
       {/* Header */}
       <div className="flex justify-between items-center flex-shrink-0">
-        <button onClick={onBack} className="btn btn-ghost">Quay lại</button>
-        <h2 className="text-xl font-bold truncate text-center">{songName || 'Karaoke'}</h2>
+        <button onClick={onBack} className="btn btn-ghost font-bold text-2xl"><FaAngleDoubleLeft /></button>
+        <h2 className="text-xl font-bold truncate text-center font-inter">{songName || 'Karaoke'}</h2>
         <div className="w-24"></div> {/* Spacer để căn giữa tiêu đề */}
       </div>
 
@@ -262,7 +257,7 @@ export default function KaraokePlayer({ data, onBack }) {
               </table>
             </div>
           ) : (
-            <div ref={listRef} className="h-full w-full overflow-y-auto overflow-x-clip p-4 flex flex-col">
+            <div ref={listRef} className="h-full w-full overflow-y-auto overflow-x-clip p-4 flex flex-col scrollbar-hidden">
               {lyrics.map((line, index) => {
                 const EPS = 0.05;
                 const t = Math.max(0, player.currentTime + lyricOffset);
@@ -285,7 +280,7 @@ export default function KaraokePlayer({ data, onBack }) {
       </div>
 
       {/* Thanh điều khiển Player */}
-      <div className="bg-black/30 backdrop-blur-sm p-4 rounded-lg mt-auto flex-shrink-0">
+      <div className="bg-black/30 backdrop-blur-sm p-4 rounded-lg mt-auto flex-shrink-0 text-white">
         <div className="flex items-center gap-4">
           <button onClick={handlePlayPause} className="btn btn-circle btn-primary">
             {player.isPlaying ? <FaPause size={20} /> : <FaPlay size={20} />}
@@ -315,7 +310,7 @@ export default function KaraokePlayer({ data, onBack }) {
 
         {/* Slider chỉnh offset lời (±3s) */}
         <div className="mt-3 flex items-center gap-3">
-          <span className="text-sm text-gray-300">Offset lời (s):</span>
+          <span className="text-sm text-gray-300">Offset(s):</span>
           <input
             type="range"
             min={-3}

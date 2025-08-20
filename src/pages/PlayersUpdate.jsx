@@ -3,8 +3,6 @@ import { useLocation } from 'react-router-dom';
 import { callSpotifyAPI } from '../spotify.js';
 import useSpotifyPlayer from '../hooks/useSpotifyPlayer';
 
-// Import các component con
-import Queue from '../components/audioPlayer/queue';
 import PlayerControls from '../components/audioPlayer/PlayerControls';
 
 // --- COMPONENT CON: Khung hiển thị lời bài hát (Placeholder) ---
@@ -97,7 +95,7 @@ const VerticalQueue = ({ tracks, playerState, onSelectTrack }) => {
                                 className="w-15 h-15 object-cover rounded-full flex-shrink-0"
                             />
                             <div className="flex-1 min-w-0">
-                                <p className={`font-vt323 font-medium text-lg overflow-hidden text-ellipsis whitespace-nowrap ${isCurrentTrack ? "text-black" : "text-white"}`}>
+                                <p className={`font-outfit font-medium text-lg overflow-hidden text-ellipsis whitespace-nowrap ${isCurrentTrack ? "text-black" : "text-white"}`}>
                                     {track.name}
                                 </p>
                                 <p className="text-white/70 text-xs overflow-hidden text-ellipsis whitespace-nowrap mt-1">

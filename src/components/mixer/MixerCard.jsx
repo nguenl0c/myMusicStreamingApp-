@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { mixStems } from '../../services/mixerApi'; 
+import { mixStems } from '../../services/mixerApi.js'; 
 import { formatTime } from '../utils/formatters';
 
 // Props:

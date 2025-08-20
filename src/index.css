@@ -3,12 +3,13 @@
 .screen-container {
     width: 100%;
     height: 100%;
-    background-color: #1e2a3e;
-    background-color: #1e2a3e;
+    background-color: #85A5D9;
+    background-color: #E1E6F0;
     opacity: 1;
     background-color: #000000;
     opacity: 0.9;
-    background-image: linear-gradient(135deg, #85A5D9, #E1E6F0 50%, #96B9D9 100%);
+    background-image: linear-gradient(135deg, #5070ac, #E1E6F0 50%, #5986db);
+    /* background-image: linear-gradient(135deg, #070544, #361d9d 60%, #070544 100%); */
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
 }
 
@@ -19,6 +20,10 @@
 
 .font-outfit {
     font-family: 'Outfit', sans-serif;
+}
+
+.font-inter {
+    font-family: 'Inter', sans-serif;
 }
 
 /* Custom Scrollbar Styles */
@@ -40,3 +45,37 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: #3B82F6;
 }   
+
+/* Hide scrollbar but keep scroll behavior */
+.scrollbar-hidden {
+        /* IE and Edge */
+        -ms-overflow-style: none;
+}
+
+@supports (scrollbar-width: none) {
+    .scrollbar-hidden {
+        /* Firefox */
+        scrollbar-width: none;
+    }
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+    /* Chrome, Safari, Opera */
+    display: none;
+}
+
+/* Progress color utility: blue-400 (#60A5FA) */
+.progress-blue-400 {
+    color: #60A5FA; /* Fallback */
+}
+.progress-blue-400::-webkit-progress-value {
+    background-color: #60A5FA !important;
+}
+.progress-blue-400::-moz-progress-bar {
+    background-color: #60A5FA !important;
+}
+.progress-blue-400::-webkit-progress-bar {
+    /* keep track subtle */
+    background-color: rgba(255,255,255,0.15);
+}
+

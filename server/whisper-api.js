@@ -65,9 +65,11 @@ export default function createKaraokeRouter() {
         // Tạo job và lưu trạng thái ban đầu.
         jobs[jobId] = {
             status: 'processing',
-            message: 'Đang trích xuất lời bài hát bằng AI...',
+            message: 'Đang chuẩn bị xử lý...',
             jobId,
-            result: null
+            result: null,
+            progress: 5,
+            _tick: null,
         };
 
         // Trả về jobId cho client ngay lập tức.
@@ -87,15 +89,59 @@ export default function createKaraokeRouter() {
         console.log(`[Job ${jobId}] Bắt đầu xử lý AI:`, args.join(' '));
         const child = spawn(pythonCmd, args, { windowsHide: true, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } });
 
+        // Cập nhật tiến trình theo thời gian (ước lượng) cho đến 95%
+        try {
+            if (!jobs[jobId]._tick) {
+                jobs[jobId]._tick = setInterval(() => {
+                    const job = jobs[jobId];
+                    if (!job || job.status !== 'processing') return;
+                    const next = Math.min(95, (job.progress || 0) + 1);
+                    job.progress = next;
+                }, 1000);
+            }
+        } catch (e) {
+            console.warn(`[Job ${jobId}] Không thể khởi tạo tick tiến trình:`, e);
+        }
+
+        const markPhase = (text) => {
+            const job = jobs[jobId];
+            if (!job) return;
+            if (text.includes('Đang tải mô hình')) {
+                job.message = 'Đang tải mô hình...';
+                job.progress = Math.max(job.progress || 0, 10);
+            } else if (text.includes('Đang phiên âm')) {
+                job.message = 'Đang phiên âm...';
+                job.progress = Math.max(job.progress || 0, 50);
+            }
+        };
+
+        child.stdout?.setEncoding('utf8');
+        child.stdout?.on('data', (data) => {
+            const s = data.toString();
+            markPhase(s);
+        });
+
         child.stderr.on('data', (data) => {
-            console.log(`[Job ${jobId}] stderr: ${data}`);
+            const s = data.toString();
+            console.log(`[Job ${jobId}] stderr: ${s}`);
+            markPhase(s);
         });
 
         child.on('close', (code) => {
+            // Dừng tick nếu còn
+            try {
+                if (jobs[jobId]?._tick) {
+                    clearInterval(jobs[jobId]._tick);
+                    jobs[jobId]._tick = null;
+                }
+            } catch {
+                // ignore cleanup errors
+            }
             if (code === 0) {
                 console.log(`[Job ${jobId}] Xử lý AI thành công.`);
                 jobs[jobId].status = 'completed';
                 jobs[jobId].message = 'Hoàn tất!';
+                jobs[jobId].progress = 100;
                 // Ghi file info.json để lưu meta (ví dụ tên bài hát)
                 try {
                     const infoPath = path.join(jobDir, 'info.json');
@@ -113,6 +159,7 @@ export default function createKaraokeRouter() {
                 console.error(`[Job ${jobId}] Xử lý AI thất bại với mã lỗi ${code}.`);
                 jobs[jobId].status = 'failed';
                 jobs[jobId].message = 'Trích xuất lời thất bại. Vui lòng thử lại.';
+                jobs[jobId].progress = jobs[jobId].progress || 0;
             }
         });
     });
@@ -128,7 +175,9 @@ export default function createKaraokeRouter() {
             return res.status(404).json({ error: "Không tìm thấy công việc." });
         }
 
-        res.json(job);
+    // Loại bỏ thuộc tính vòng tham chiếu (_tick) trước khi trả JSON
+    const { _tick, ...safeJob } = job;
+    return res.json(safeJob);
     });
 
     // THÊM MỚI: API để lấy danh sách các phiên karaoke đã xử lý
